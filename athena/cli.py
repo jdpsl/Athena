@@ -107,7 +107,12 @@ class AthenaSession:
         self.tool_registry.register(GitBranchTool())
 
         # Web tools
-        self.tool_registry.register(WebSearchTool())
+        self._web_search_tool = WebSearchTool(search_api=self.config.tools.search_api)
+        self._web_search_tool.brave_api_key = self.config.tools.brave_api_key
+        self._web_search_tool.google_api_key = self.config.tools.google_api_key
+        self._web_search_tool.google_cx = self.config.tools.google_cx
+        self._web_search_tool.searxng_url = self.config.tools.searxng_url
+        self.tool_registry.register(self._web_search_tool)
         self._web_fetch_tool = WebFetchTool()  # Gets LLM client after agent is created
         self.tool_registry.register(self._web_fetch_tool)
 
@@ -279,9 +284,14 @@ You are running in a persistent session. The user is working on a coding project
             exit(0)
 
         elif cmd == "/help":
+            # Build help text with conditional commands
+            brave_api_help = ""
+            if self.config.tools.search_api == "brave":
+                brave_api_help = "/braveapi [key] - Set Brave Search API key\n"
+
             console.print(
                 Panel(
-                    """[bold]Built-in Commands:[/bold]
+                    f"""[bold]Built-in Commands:[/bold]
 /help - Show this help
 /exit - Exit Athena
 /clear - Clear conversation history
@@ -295,17 +305,23 @@ You are running in a persistent session. The user is working on a coding project
 /tools - List available tools
 /commands - List slash commands
 
+[bold]Web Search Commands:[/bold]
+/use_brave - Use Brave Search API
+/use_duckduckgo - Use DuckDuckGo (default, currently broken)
+/use_searxng - Use SearXNG instance
+{brave_api_help}
 [bold]Examples:[/bold]
 /model gpt-4
 /api https://api.openai.com/v1
 /apikey sk-1234567890abcdef
 /temp 0.5
 /fallback on
+/use_brave
 /save
 
 [bold]Fallback Mode:[/bold]
 Enable for models without native function calling support
-Uses text format: TOOL[Name]{"param": "value"}
+Uses text format: TOOL[Name]{{"param": "value"}}
 
 [bold]Persistent Settings:[/bold]
 Settings saved with /save are automatically loaded on startup
@@ -327,6 +343,15 @@ Create .athena/commands/*.md files to define custom slash commands
             return True
 
         elif cmd == "/config":
+            api_status = ""
+            if self.config.tools.search_api == "brave":
+                api_status = f"\n[cyan]Brave API Key:[/cyan] {'Set' if self.config.tools.brave_api_key else 'Not set'}"
+            elif self.config.tools.search_api == "google":
+                api_status = f"\n[cyan]Google API Key:[/cyan] {'Set' if self.config.tools.google_api_key else 'Not set'}"
+                api_status += f"\n[cyan]Google CX:[/cyan] {'Set' if self.config.tools.google_cx else 'Not set'}"
+            elif self.config.tools.search_api == "searxng":
+                api_status = f"\n[cyan]SearXNG URL:[/cyan] {self.config.tools.searxng_url or 'Not set'}"
+
             console.print(
                 Panel(
                     f"[cyan]Model:[/cyan] {self.config.llm.model}\n"
@@ -334,7 +359,9 @@ Create .athena/commands/*.md files to define custom slash commands
                     f"[cyan]Temperature:[/cyan] {self.config.llm.temperature}\n"
                     f"[cyan]Max Iterations:[/cyan] {self.config.agent.max_iterations}\n"
                     f"[cyan]Thinking Enabled:[/cyan] {self.config.agent.enable_thinking}\n"
-                    f"[cyan]Fallback Mode:[/cyan] {self.config.agent.fallback_mode}",
+                    f"[cyan]Fallback Mode:[/cyan] {self.config.agent.fallback_mode}\n"
+                    f"[cyan]Search API:[/cyan] {self.config.tools.search_api}"
+                    f"{api_status}",
                     title="Current Configuration",
                     border_style="cyan",
                 )
@@ -430,6 +457,11 @@ Create .athena/commands/*.md files to define custom slash commands
                 api_base=self.config.llm.api_base,
                 api_key=self.config.llm.api_key,
                 temperature=self.config.llm.temperature,
+                search_api=self.config.tools.search_api,
+                brave_api_key=self.config.tools.brave_api_key,
+                google_api_key=self.config.tools.google_api_key,
+                google_cx=self.config.tools.google_cx,
+                searxng_url=self.config.tools.searxng_url,
             )
             if self.config_manager.save(settings):
                 console.print("[green]✓[/green] Settings saved to ~/.athena/config.json")
@@ -437,8 +469,76 @@ Create .athena/commands/*.md files to define custom slash commands
                 console.print(f"  [cyan]API Base:[/cyan] {settings['api_base']}")
                 console.print(f"  [cyan]API Key:[/cyan] {'Set' if settings['api_key'] else 'Not set'}")
                 console.print(f"  [cyan]Temperature:[/cyan] {settings['temperature']}")
+                console.print(f"  [cyan]Search API:[/cyan] {settings['search_api']}")
             else:
                 console.print("[red]Error:[/red] Failed to save settings")
+            return True
+
+        elif cmd == "/use_brave":
+            self.config.tools.search_api = "brave"
+            self._web_search_tool.search_api = "brave"
+            console.print("[green]✓[/green] Switched to [bold]Brave Search API[/bold]")
+            if not self.config.tools.brave_api_key:
+                console.print("[yellow]⚠[/yellow] No Brave API key set. Use [cyan]/braveapi KEY[/cyan] to set it.")
+                console.print("  Get a free API key at: https://brave.com/search/api/")
+            else:
+                console.print("  [dim]API key is configured[/dim]")
+            return True
+
+        elif cmd == "/use_duckduckgo":
+            self.config.tools.search_api = "duckduckgo"
+            self._web_search_tool.search_api = "duckduckgo"
+            console.print("[green]✓[/green] Switched to [bold]DuckDuckGo[/bold]")
+            console.print("[yellow]⚠[/yellow] Note: DuckDuckGo HTML scraping is currently broken due to CAPTCHA.")
+            console.print("  Consider using Brave Search instead: [cyan]/use_brave[/cyan]")
+            return True
+
+        elif cmd == "/use_searxng":
+            parts = command.split(maxsplit=1)
+            if len(parts) > 1:
+                # Set SearXNG URL
+                url = parts[1]
+                self.config.tools.searxng_url = url
+                self._web_search_tool.searxng_url = url
+                self.config.tools.search_api = "searxng"
+                self._web_search_tool.search_api = "searxng"
+                console.print(f"[green]✓[/green] Switched to [bold]SearXNG[/bold]")
+                console.print(f"  [cyan]Instance URL:[/cyan] {url}")
+            else:
+                # Show usage
+                if self.config.tools.searxng_url:
+                    console.print("[yellow]Usage:[/yellow] /use_searxng [url]")
+                    console.print(f"  [cyan]Current URL:[/cyan] {self.config.tools.searxng_url}")
+                    console.print("  Or provide a new URL to change it")
+                else:
+                    console.print("[yellow]Usage:[/yellow] /use_searxng [url]")
+                    console.print("  Example: /use_searxng http://localhost:8888")
+                    console.print("  Learn more: https://docs.searxng.org/")
+            return True
+
+        elif cmd == "/braveapi":
+            # Only available when Brave is selected
+            if self.config.tools.search_api != "brave":
+                console.print("[red]Error:[/red] /braveapi is only available when using Brave Search")
+                console.print("  Use [cyan]/use_brave[/cyan] first to switch to Brave Search")
+                return True
+
+            parts = command.split(maxsplit=1)
+            if len(parts) > 1:
+                # Set Brave API key
+                api_key = parts[1]
+                self.config.tools.brave_api_key = api_key
+                self._web_search_tool.brave_api_key = api_key
+                console.print("[green]✓[/green] Brave API key set")
+                console.print("  [dim]Use /save to persist this setting[/dim]")
+            else:
+                # Show current status
+                if self.config.tools.brave_api_key:
+                    masked = self.config.tools.brave_api_key[:8] + "..." if len(self.config.tools.brave_api_key) > 8 else "***"
+                    console.print(f"[cyan]Current Brave API key:[/cyan] {masked}")
+                else:
+                    console.print("[yellow]No Brave API key set[/yellow]")
+                    console.print("  Get a free key at: https://brave.com/search/api/")
             return True
 
         elif cmd == "/fallback":
