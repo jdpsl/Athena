@@ -250,12 +250,17 @@ You are running in a persistent session. The user is working on a coding project
                 # Expand slash commands
                 expanded_input = self.command_loader.expand_command(user_input)
 
-                # Run agent
-                console.print("\n[bold cyan]Athena[/bold cyan]")
-                response = await self.agent.run(expanded_input)
-
-                # Display response
-                console.print(Markdown(response))
+                # Check if this is a documentation question
+                if self._is_documentation_question(expanded_input):
+                    # Spawn docs agent
+                    console.print("\n[bold cyan]Athena[/bold cyan]")
+                    response = await self._spawn_docs_agent(expanded_input)
+                    console.print(Markdown(response))
+                else:
+                    # Run main agent
+                    console.print("\n[bold cyan]Athena[/bold cyan]")
+                    response = await self.agent.run(expanded_input)
+                    console.print(Markdown(response))
 
             except KeyboardInterrupt:
                 console.print("\n[yellow]Use /exit to quit[/yellow]")
@@ -543,6 +548,99 @@ Create .athena/commands/*.md files to define custom slash commands
             return True
 
         return False
+
+    def _is_documentation_question(self, text: str) -> bool:
+        """Detect if user input is a documentation question.
+
+        Args:
+            text: User input text
+
+        Returns:
+            True if this appears to be a documentation question
+        """
+        text_lower = text.lower()
+
+        # Documentation question patterns
+        doc_patterns = [
+            # Questions about capabilities
+            "can athena",
+            "does athena",
+            "is athena",
+            "what can athena",
+            "what does athena",
+            # Questions about how-to
+            "how do i",
+            "how can i",
+            "how to",
+            "how does",
+            # Questions about configuration
+            "how do i configure",
+            "how do i set up",
+            "how do i enable",
+            "how do i use",
+            # Questions about features
+            "what tools",
+            "what commands",
+            "what features",
+            "what is",
+            "what are",
+            # Questions about MCP
+            "what is mcp",
+            "how does mcp",
+            "mcp server",
+            # General help
+            "help me with",
+            "tell me about",
+            "explain",
+        ]
+
+        return any(pattern in text_lower for pattern in doc_patterns)
+
+    async def _spawn_docs_agent(self, question: str) -> str:
+        """Spawn athena-docs agent to answer documentation question.
+
+        Args:
+            question: Documentation question from user
+
+        Returns:
+            Answer from docs agent
+        """
+        from athena.agent.types import AgentType, get_system_prompt
+        from athena.agent.executor import AgentExecutor
+        from athena.llm.client import LLMClient
+        from athena.models.message import Message, Role
+
+        # Create a dedicated LLM client for the docs agent
+        docs_client = LLMClient(self.config.llm)
+
+        # Create limited tool registry with only search/read tools
+        from athena.tools.base import ToolRegistry
+        docs_tools = ToolRegistry()
+        docs_tools.register(GlobTool())
+        docs_tools.register(GrepTool())
+        docs_tools.register(ReadTool())
+
+        # Create docs agent executor
+        docs_agent = AgentExecutor(
+            llm_client=docs_client,
+            tool_registry=docs_tools,
+            config=self.config.agent,
+        )
+
+        # Get system prompt for docs agent
+        system_prompt = get_system_prompt(AgentType.ATHENA_DOCS)
+
+        # Build messages
+        messages = [
+            Message(role=Role.SYSTEM, content=system_prompt),
+            Message(role=Role.USER, content=question),
+        ]
+
+        # Run the agent
+        console.print("[dim]🔍 Looking up documentation...[/dim]")
+        result = await docs_agent.run(messages)
+
+        return result.content
 
     async def _handle_mcp_list(self) -> None:
         """Handle /mcp-list command."""
