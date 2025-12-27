@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Environment
+.env
+.env.local
+config.local.yaml
+
+# User's personal config (example configs are tracked)
+# config.yaml is tracked as an example - users should copy to config.local.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Athena specific
+.athena/
+athena.db
+*.log
+
+# Claude Code
+.claude/

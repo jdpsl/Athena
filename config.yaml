@@ -1,0 +1,52 @@
+# Athena Configuration Example
+
+llm:
+  # OpenAI-compatible API endpoint (LM Studio, vLLM, OpenAI, etc.)
+  api_base: "http://localhost:1234/v1"
+
+  # API key (not needed for LM Studio)
+  api_key: "not-needed-for-local"
+
+  # Model name
+  model: "local-model"
+
+  # Sampling temperature (0.0 - 1.0)
+  temperature: 0.7
+
+  # Max tokens to generate (null for unlimited)
+  max_tokens: null
+
+  # Request timeout in seconds
+  timeout: 120
+
+agent:
+  # Maximum agent iterations before stopping
+  max_iterations: 50
+
+  # Enable thinking tag injection for models without native support
+  enable_thinking: true
+
+  # Maximum tokens for thinking content
+  thinking_budget: 32000
+
+  # Allow parallel tool execution
+  parallel_tool_calls: true
+
+tools:
+  # Bash command timeout in milliseconds
+  bash_timeout: 120000
+
+  # Maximum file size to read in bytes (10MB)
+  max_file_size: 10000000
+
+  # Maximum search results
+  max_search_results: 100
+
+  # Enable sandboxed execution (Docker)
+  sandbox_enabled: false
+
+# Working directory
+working_directory: "."
+
+# Enable debug mode
+debug: false

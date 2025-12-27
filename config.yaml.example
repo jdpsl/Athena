@@ -1,0 +1,45 @@
+# Athena Configuration Example
+
+llm:
+  api_base: "http://localhost:1234/v1"
+  api_key: "not-needed-for-local"
+  model: "local-model"
+  temperature: 0.7
+
+agent:
+  max_iterations: 50
+  enable_thinking: true
+  thinking_budget: 32000
+  parallel_tool_calls: true
+
+tools:
+  bash_timeout: 120000  # 2 minutes
+  max_file_size: 10000000
+  max_search_results: 100
+  sandbox_enabled: false
+
+# MCP (Model Context Protocol) Configuration
+mcp:
+  enabled: true
+  servers:
+    - name: test
+      transport: stdio
+      command: python
+      args: ["test_mcp_server.py"]
+      enabled: true
+
+    # Example: Filesystem MCP server (commented out)
+    # - name: filesystem
+    #   transport: stdio
+    #   command: python
+    #   args: ["-m", "mcp_server_filesystem", "/path/to/directory"]
+    #   enabled: false
+
+    # Example: HTTP MCP server (commented out)
+    # - name: remote-api
+    #   transport: http
+    #   url: "http://localhost:8000/mcp"
+    #   enabled: false
+
+working_directory: "."
+debug: false
