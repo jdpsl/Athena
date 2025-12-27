@@ -42,6 +42,13 @@ class ToolsConfig(BaseModel):
     max_search_results: int = Field(default=100, description="Max search results")
     sandbox_enabled: bool = Field(default=False, description="Enable sandboxed execution")
 
+    # Web search configuration
+    search_api: str = Field(default="duckduckgo", description="Search API to use (duckduckgo, brave, google, searxng)")
+    brave_api_key: Optional[str] = Field(default=None, description="Brave Search API key")
+    google_api_key: Optional[str] = Field(default=None, description="Google Custom Search API key")
+    google_cx: Optional[str] = Field(default=None, description="Google Custom Search Engine ID")
+    searxng_url: Optional[str] = Field(default=None, description="SearXNG instance URL")
+
 
 class MCPServerConfig(BaseModel):
     """Configuration for a single MCP server."""

@@ -50,7 +50,13 @@ class PersistentConfigManager:
             return False
 
     def get_current_settings(
-        self, model: str, api_base: str, api_key: str, temperature: float, mcp_servers: Optional[list] = None
+        self, model: str, api_base: str, api_key: str, temperature: float,
+        search_api: str = "duckduckgo",
+        brave_api_key: str = None,
+        google_api_key: str = None,
+        google_cx: str = None,
+        searxng_url: str = None,
+        mcp_servers: Optional[list] = None
     ) -> dict:
         """Get current settings as a dict.
 
@@ -59,6 +65,11 @@ class PersistentConfigManager:
             api_base: Current API base URL
             api_key: Current API key
             temperature: Current temperature
+            search_api: Search API to use
+            brave_api_key: Brave Search API key
+            google_api_key: Google API key
+            google_cx: Google Custom Search Engine ID
+            searxng_url: SearXNG instance URL
             mcp_servers: MCP server configurations
 
         Returns:
@@ -69,6 +80,11 @@ class PersistentConfigManager:
             "api_base": api_base,
             "api_key": api_key,
             "temperature": temperature,
+            "search_api": search_api,
+            "brave_api_key": brave_api_key,
+            "google_api_key": google_api_key,
+            "google_cx": google_cx,
+            "searxng_url": searxng_url,
         }
         if mcp_servers is not None:
             settings["mcp_servers"] = mcp_servers
@@ -89,6 +105,18 @@ class PersistentConfigManager:
             athena_config.llm.api_key = settings["api_key"]
         if "temperature" in settings:
             athena_config.llm.temperature = settings["temperature"]
+        # Web search settings
+        if "search_api" in settings:
+            athena_config.tools.search_api = settings["search_api"]
+        if "brave_api_key" in settings:
+            athena_config.tools.brave_api_key = settings["brave_api_key"]
+        if "google_api_key" in settings:
+            athena_config.tools.google_api_key = settings["google_api_key"]
+        if "google_cx" in settings:
+            athena_config.tools.google_cx = settings["google_cx"]
+        if "searxng_url" in settings:
+            athena_config.tools.searxng_url = settings["searxng_url"]
+        # MCP settings
         if "mcp_servers" in settings:
             from athena.models.config import MCPServerConfig
             athena_config.mcp.servers = [MCPServerConfig(**server) for server in settings["mcp_servers"]]
