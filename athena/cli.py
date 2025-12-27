@@ -303,6 +303,7 @@ You are running in a persistent session. The user is working on a coding project
 /apikey [key] - Show or set API key
 /temp [value] - Show or set temperature (0.0-1.0)
 /fallback [on|off] - Toggle text-based tool calling fallback
+/thinking [on|off] - Toggle thinking tag injection (extended reasoning)
 /save - Save current settings to ~/.athena/config.json
 /tools - List available tools
 /commands - List slash commands
@@ -508,6 +509,29 @@ Create .athena/commands/*.md files to define custom slash commands
                 console.print(f"[cyan]Fallback mode:[/cyan] {status}")
                 console.print("\n[dim]Fallback mode uses text-based tool calling for models")
                 console.print("without native function calling support.[/dim]")
+            return True
+
+        elif cmd == "/thinking":
+            parts = command.split(maxsplit=1)
+            if len(parts) > 1:
+                # Set thinking mode
+                value = parts[1].lower()
+                if value in ['on', 'true', '1', 'yes']:
+                    self.config.agent.enable_thinking = True
+                    console.print("[green]✓[/green] Thinking tag injection [bold]enabled[/bold]")
+                    console.print("  [dim]Extended reasoning will be injected for supported models[/dim]")
+                elif value in ['off', 'false', '0', 'no']:
+                    self.config.agent.enable_thinking = False
+                    console.print("[green]✓[/green] Thinking tag injection [bold]disabled[/bold]")
+                    console.print("  [dim]Model will use standard reasoning without thinking tags[/dim]")
+                else:
+                    console.print("[red]Error:[/red] Use 'on' or 'off'")
+            else:
+                # Show current state
+                status = "[green]enabled[/green]" if self.config.agent.enable_thinking else "[red]disabled[/red]"
+                console.print(f"[cyan]Thinking tag injection:[/cyan] {status}")
+                console.print(f"[cyan]Thinking budget:[/cyan] {self.config.agent.thinking_budget} tokens")
+                console.print("\n[dim]Thinking tag injection enables extended reasoning for models that support <thinking> tags (improves complex problem solving).[/dim]")
             return True
 
         elif cmd == "/tools":
