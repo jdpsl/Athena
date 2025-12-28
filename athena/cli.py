@@ -11,7 +11,7 @@ from rich.prompt import Prompt
 from athena.models.config import AthenaConfig
 from athena.agent.main_agent import MainAgent
 from athena.tools.base import ToolRegistry
-from athena.tools.file_ops import ReadTool, WriteTool, EditTool
+from athena.tools.file_ops import ReadTool, WriteTool, EditTool, InsertTool
 from athena.tools.search import GlobTool, GrepTool
 from athena.tools.bash import BashTool
 from athena.tools.todo import TodoWriteTool
@@ -90,6 +90,7 @@ class AthenaSession:
         self.tool_registry.register(ReadTool())
         self.tool_registry.register(WriteTool())
         self.tool_registry.register(EditTool())
+        self.tool_registry.register(InsertTool())
         self.tool_registry.register(DeleteFileTool())
         self.tool_registry.register(MoveFileTool())
         self.tool_registry.register(CopyFileTool())
@@ -130,7 +131,7 @@ class AthenaSession:
         return """You are Athena, an AI coding assistant. You help users with software engineering tasks.
 
 You have access to tools for:
-- File operations: Read, Write, Edit, Delete, Move, Copy, ListDir, MakeDir
+- File operations: Read, Write, Edit, Insert, Delete, Move, Copy, ListDir, MakeDir
 - Search: Glob (find files by pattern), Grep (search file contents with regex)
 - Execution: Bash (run shell commands - tests, builds, package management, git add, etc.)
 - Git: GitStatus, GitDiff, GitCommit, GitLog, GitBranch
@@ -140,15 +141,19 @@ You have access to tools for:
 - User interaction: AskUserQuestion (ask clarifying questions)
 
 File Operations:
-- Read - View file contents (ALWAYS use before Edit or Write!)
+- Read - View file contents (ALWAYS use before Edit, Insert, or Write!)
 - Edit - Make precise changes to existing files (requires Read first)
+- Insert - Insert text at a specific line number (requires Read first)
+  * Use insert_line=0 to insert at the beginning of the file
+  * Use insert_line=N to insert after line N (1-indexed)
+  * Perfect for adding imports, docstrings, or new functions without replacing text
 - Write - Create new files or completely overwrite existing ones
 - DeleteFile - Remove files/directories (use with caution!)
 - MoveFile - Move or rename files
 - CopyFile - Duplicate files/directories
 - ListDir - List directory contents with details (better than 'ls')
 - MakeDir - Create directories
-IMPORTANT: You MUST Read a file before using Edit or Write on it!
+IMPORTANT: You MUST Read a file before using Edit, Insert, or Write on it!
 
 Search Tools - Use for finding files and content:
 - Glob - Find files by pattern:
@@ -217,7 +222,7 @@ When working on tasks:
 6. Use specialized Git tools (GitStatus, GitDiff, etc.) for viewing git state
 7. Use Task tool to spawn sub-agents for complex exploration or planning
 8. Use WebSearch and WebFetch when you need docs or encounter unfamiliar tech
-9. Use file operation tools (Read, Write, Edit) instead of cat/echo for file ops
+9. Use file operation tools (Read, Write, Edit, Insert) instead of cat/echo for file ops
 10. Always test your changes by running tests with Bash
 11. Be thorough and careful with code changes
 

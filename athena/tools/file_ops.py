@@ -252,3 +252,101 @@ class EditTool(Tool):
                 output="",
                 error=f"Failed to edit file: {str(e)}",
             )
+
+
+class InsertTool(Tool):
+    """Tool for inserting text at a specific line in a file."""
+
+    @property
+    def name(self) -> str:
+        return "Insert"
+
+    @property
+    def description(self) -> str:
+        return "Inserts text at a specific line number in a file. Line numbers are 1-indexed. Use 0 to insert at the beginning of the file."
+
+    @property
+    def parameters(self) -> list[ToolParameter]:
+        return [
+            ToolParameter(
+                name="file_path",
+                type=ToolParameterType.STRING,
+                description="Absolute path to the file to modify",
+                required=True,
+            ),
+            ToolParameter(
+                name="insert_line",
+                type=ToolParameterType.NUMBER,
+                description="Line number after which to insert text (0 for beginning of file, 1-indexed)",
+                required=True,
+            ),
+            ToolParameter(
+                name="new_text",
+                type=ToolParameterType.STRING,
+                description="Text to insert (will be added as new line(s))",
+                required=True,
+            ),
+        ]
+
+    async def execute(
+        self,
+        file_path: str,
+        insert_line: int,
+        new_text: str,
+        **kwargs: Any,
+    ) -> ToolResult:
+        """Execute text insertion at specified line."""
+        try:
+            path = Path(file_path).expanduser().resolve()
+
+            if not path.exists():
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error=f"File not found: {file_path}",
+                )
+
+            # Read file
+            async with aiofiles.open(path, "r", encoding="utf-8") as f:
+                lines = await f.readlines()
+
+            # Validate insert_line
+            if insert_line < 0 or insert_line > len(lines):
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error=f"Invalid insert_line: {insert_line}. File has {len(lines)} lines.",
+                )
+
+            # Ensure new_text ends with newline if it doesn't already
+            if new_text and not new_text.endswith('\n'):
+                new_text += '\n'
+
+            # Insert text at specified line
+            if insert_line == 0:
+                # Insert at beginning
+                lines.insert(0, new_text)
+            else:
+                # Insert after the specified line (1-indexed)
+                lines.insert(insert_line, new_text)
+
+            # Write back to file
+            async with aiofiles.open(path, "w", encoding="utf-8") as f:
+                await f.writelines(lines)
+
+            return ToolResult(
+                success=True,
+                output=f"Text inserted successfully at line {insert_line}",
+                metadata={
+                    "file_path": str(path),
+                    "insert_line": insert_line,
+                    "lines_added": new_text.count('\n'),
+                },
+            )
+
+        except Exception as e:
+            return ToolResult(
+                success=False,
+                output="",
+                error=f"Failed to insert text: {str(e)}",
+            )
