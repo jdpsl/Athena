@@ -42,6 +42,7 @@ class AthenaSession:
         self.command_loader = CommandLoader()
         self.config_manager = PersistentConfigManager()
         self.mcp_manager: MCPClientManager | None = None
+        self.skill_loader = None
 
     async def initialize(self) -> None:
         """Initialize the session."""
@@ -65,6 +66,11 @@ class AthenaSession:
         if self.config.mcp.enabled:
             self.mcp_manager = MCPClientManager(self.config.mcp)
             await self.mcp_manager.initialize_all(self.tool_registry)
+
+        # Initialize skills
+        from athena.skills.loader import SkillLoader
+        self.skill_loader = SkillLoader(working_directory=self.config.working_directory)
+        self.skill_loader.discover_skills()
 
         # Initialize agent
         self.agent = MainAgent(self.config, self.tool_registry, self.job_queue)
@@ -312,6 +318,8 @@ You are running in a persistent session. The user is working on a coding project
 /save - Save current settings to ~/.athena/config.json
 /tools - List available tools
 /commands - List slash commands
+/skills - List available skills
+/skill <name> [task] - Invoke a skill
 /mcp-list - List all MCP servers
 /mcp-add <name> <transport> <command/url> [args...] - Add MCP server
 /mcp-remove <name> - Remove MCP server
@@ -554,6 +562,14 @@ Create .athena/commands/*.md files to define custom slash commands
                     console.print(f"  • /{cmd_name}")
             else:
                 console.print("[yellow]No custom commands found[/yellow]")
+            return True
+
+        elif cmd == "/skills":
+            await self._handle_skills_list()
+            return True
+
+        elif cmd == "/skill":
+            await self._handle_skill_invoke(command)
             return True
 
         elif cmd == "/mcp-list":
@@ -880,6 +896,143 @@ Create .athena/commands/*.md files to define custom slash commands
         server.enabled = False
         console.print(f"[green]✓[/green] Disabled MCP server: [cyan]{name}[/cyan]")
         console.print("\n[dim]Save with /save to persist this change[/dim]")
+
+    async def _handle_skills_list(self) -> None:
+        """Handle /skills command - list all available skills."""
+        if not self.skill_loader:
+            console.print("[yellow]Skills system not initialized[/yellow]")
+            return
+
+        skills = self.skill_loader.list_skills()
+
+        if not skills:
+            console.print("[yellow]No skills found[/yellow]")
+            console.print("\n[dim]Create skills in:[/dim]")
+            console.print(f"[dim]  Global: ~/.athena/skills/[/dim]")
+            console.print(f"[dim]  Project: ./.athena/skills/[/dim]")
+            console.print("\n[dim]Each skill should be a directory with a SKILL.md file[/dim]")
+            return
+
+        console.print(f"[bold cyan]Available Skills ({len(skills)}):[/bold cyan]\n")
+
+        for skill in skills:
+            # Determine scope (global or project)
+            if skill.skill_path.is_relative_to(Path.home() / ".athena"):
+                scope = "[dim](global)[/dim]"
+            else:
+                scope = "[dim](project)[/dim]"
+
+            console.print(f"  [green]{skill.name}[/green] {scope}")
+            console.print(f"    {skill.description}")
+
+            if skill.allowed_tools:
+                tools_str = ", ".join(skill.allowed_tools[:5])
+                if len(skill.allowed_tools) > 5:
+                    tools_str += f", +{len(skill.allowed_tools) - 5} more"
+                console.print(f"    [dim]Tools: {tools_str}[/dim]")
+
+            if skill.model:
+                console.print(f"    [dim]Model: {skill.model}[/dim]")
+
+            console.print()
+
+        console.print("[dim]Use /skill <name> to invoke a skill[/dim]")
+
+    async def _handle_skill_invoke(self, command: str) -> None:
+        """Handle /skill <name> command - invoke a skill."""
+        parts = command.split(maxsplit=1)
+
+        if len(parts) < 2:
+            console.print("[red]Error:[/red] Usage: /skill <name>")
+            console.print("[dim]Use /skills to list available skills[/dim]")
+            return
+
+        skill_name = parts[1].split()[0]  # Get just the skill name
+        task_description = parts[1][len(skill_name):].strip() if len(parts[1]) > len(skill_name) else ""
+
+        if not self.skill_loader:
+            console.print("[yellow]Skills system not initialized[/yellow]")
+            return
+
+        skill = self.skill_loader.get_skill(skill_name)
+
+        if not skill:
+            console.print(f"[red]Error:[/red] Skill '{skill_name}' not found")
+            console.print("\n[dim]Available skills:[/dim]")
+            for s in self.skill_loader.list_skills():
+                console.print(f"  • {s.name}")
+            return
+
+        # Ask user for task if not provided
+        if not task_description:
+            task_description = Prompt.ask(
+                f"\n[bold green]Task for {skill.name}[/bold green]",
+                default="Execute the skill"
+            )
+
+        # Show what we're doing
+        console.print(f"\n[bold cyan]🎯 Activating skill:[/bold cyan] {skill.name}")
+        console.print(f"[dim]{skill.description}[/dim]")
+        console.print(f"\n[bold]Task:[/bold] {task_description}\n")
+
+        # Create a skill agent with the skill's system prompt
+        from athena.agent.executor import AgentExecutor
+        from athena.llm.client import LLMClient
+        from athena.models.message import Message, Role
+
+        # Create LLM client (use skill's model if specified)
+        llm_config = self.config.llm
+        if skill.model:
+            # Override model for this skill
+            from athena.models.config import LLMConfig
+            llm_config = LLMConfig(
+                api_base=self.config.llm.api_base,
+                api_key=self.config.llm.api_key,
+                model=skill.model,
+                temperature=self.config.llm.temperature,
+                max_tokens=self.config.llm.max_tokens,
+                timeout=self.config.llm.timeout,
+            )
+
+        skill_client = LLMClient(llm_config)
+
+        # Create limited tool registry if allowed_tools specified
+        if skill.allowed_tools:
+            from athena.tools.base import ToolRegistry
+            skill_tools = ToolRegistry()
+            for tool_name in skill.allowed_tools:
+                tool = self.tool_registry.get_tool(tool_name)
+                if tool:
+                    skill_tools.register(tool)
+                else:
+                    console.print(f"[yellow]Warning:[/yellow] Tool '{tool_name}' not found")
+        else:
+            # Use all tools
+            skill_tools = self.tool_registry
+
+        # Create skill agent
+        skill_agent = AgentExecutor(
+            llm_client=skill_client,
+            tool_registry=skill_tools,
+            config=self.config.agent,
+        )
+
+        # Build messages with skill's system prompt
+        messages = [
+            Message(role=Role.SYSTEM, content=skill.get_system_prompt()),
+            Message(role=Role.USER, content=task_description),
+        ]
+
+        # Run the skill agent
+        try:
+            result = await skill_agent.run(messages)
+            console.print("\n[bold cyan]Skill Result:[/bold cyan]")
+            console.print(Markdown(result.content))
+        except Exception as e:
+            console.print(f"\n[red]Error executing skill:[/red] {e}")
+            if self.config.debug:
+                import traceback
+                traceback.print_exc()
 
     async def run_single_task(self, prompt: str) -> str:
         """Run a single task and return the result.
