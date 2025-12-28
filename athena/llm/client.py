@@ -6,6 +6,7 @@ from openai import AsyncOpenAI
 from athena.models.config import LLMConfig
 from athena.models.message import Message, Role, ToolCall
 from athena.llm.thinking_injector import ThinkingInjector
+from athena.errors.recovery import ErrorRecovery
 
 
 class LLMClient:
@@ -15,15 +16,18 @@ class LLMClient:
         self,
         config: LLMConfig,
         thinking_injector: Optional[ThinkingInjector] = None,
+        enable_error_recovery: bool = True,
     ):
         """Initialize LLM client.
 
         Args:
             config: LLM configuration
             thinking_injector: Optional thinking injector
+            enable_error_recovery: Whether to enable automatic error recovery
         """
         self.config = config
         self.thinking_injector = thinking_injector or ThinkingInjector()
+        self.error_recovery = ErrorRecovery(enable_recovery=enable_error_recovery)
 
         self.client = AsyncOpenAI(
             base_url=config.api_base,
@@ -72,9 +76,13 @@ class LLMClient:
             request_params["tools"] = tools
             request_params["tool_choice"] = "auto"
 
-        # Make API call
+        # Make API call with error recovery
         try:
-            response = await self.client.chat.completions.create(**request_params)
+            response = await self.error_recovery.execute_with_recovery(
+                self.client.chat.completions.create,
+                **request_params,
+                operation_name=f"LLM API call ({self.config.model})"
+            )
         except Exception as e:
             # Enhanced error logging
             error_msg = f"LLM API Error: {str(e)}"
@@ -179,9 +187,13 @@ class LLMClient:
             request_params["tools"] = tools
             request_params["tool_choice"] = "auto"
 
-        # Stream response
+        # Stream response with error recovery
         try:
-            stream = await self.client.chat.completions.create(**request_params)
+            stream = await self.error_recovery.execute_with_recovery(
+                self.client.chat.completions.create,
+                **request_params,
+                operation_name=f"LLM API streaming ({self.config.model})"
+            )
         except Exception as e:
             # Enhanced error logging
             error_msg = f"LLM API Error: {str(e)}"

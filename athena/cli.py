@@ -315,6 +315,7 @@ You are running in a persistent session. The user is working on a coding project
 /temp [value] - Show or set temperature (0.0-1.0)
 /fallback [on|off] - Toggle text-based tool calling fallback
 /thinking [on|off] - Toggle thinking tag injection (extended reasoning)
+/streaming [on|off] - Toggle streaming responses (real-time output)
 /save - Save current settings to ~/.athena/config.json
 /tools - List available tools
 /commands - List slash commands
@@ -365,6 +366,7 @@ Create .athena/commands/*.md files to define custom slash commands
                     f"[cyan]Temperature:[/cyan] {self.config.llm.temperature}\n"
                     f"[cyan]Max Iterations:[/cyan] {self.config.agent.max_iterations}\n"
                     f"[cyan]Thinking Enabled:[/cyan] {self.config.agent.enable_thinking}\n"
+                    f"[cyan]Streaming:[/cyan] {self.config.agent.streaming}\n"
                     f"[cyan]Fallback Mode:[/cyan] {self.config.agent.fallback_mode}",
                     title="Current Configuration",
                     border_style="cyan",
@@ -547,6 +549,28 @@ Create .athena/commands/*.md files to define custom slash commands
                 console.print("\n[dim]Thinking tag injection enables extended reasoning for models that support <thinking> tags (improves complex problem solving).[/dim]")
             return True
 
+        elif cmd == "/streaming":
+            parts = command.split(maxsplit=1)
+            if len(parts) > 1:
+                # Set streaming mode
+                value = parts[1].lower()
+                if value in ['on', 'true', '1', 'yes']:
+                    self.config.agent.streaming = True
+                    console.print("[green]✓[/green] Streaming responses [bold]enabled[/bold]")
+                    console.print("  [dim]Responses will be shown as they are generated[/dim]")
+                elif value in ['off', 'false', '0', 'no']:
+                    self.config.agent.streaming = False
+                    console.print("[green]✓[/green] Streaming responses [bold]disabled[/bold]")
+                    console.print("  [dim]Full responses will be shown after completion[/dim]")
+                else:
+                    console.print("[red]Error:[/red] Use 'on' or 'off'")
+            else:
+                # Show current state
+                status = "[green]enabled[/green]" if self.config.agent.streaming else "[red]disabled[/red]"
+                console.print(f"[cyan]Streaming responses:[/cyan] {status}")
+                console.print("\n[dim]Streaming shows responses as they are generated in real-time for better responsiveness.[/dim]")
+            return True
+
         elif cmd == "/tools":
             tools = self.tool_registry.list_tools()
             console.print("[bold cyan]Available Tools:[/bold cyan]")
@@ -614,29 +638,31 @@ Create .athena/commands/*.md files to define custom slash commands
             "what can athena",
             "what does athena",
             # Questions about how-to
-            "how do i",
-            "how can i",
-            "how to",
-            "how does",
-            # Questions about configuration
             "how do i configure",
             "how do i set up",
             "how do i enable",
             "how do i use",
+            "how to use athena",
+            "how to configure",
+            "how does athena",
             # Questions about features
-            "what tools",
-            "what commands",
-            "what features",
-            "what is",
-            "what are",
-            # Questions about MCP
+            "what tools does",
+            "what commands does",
+            "what features does",
+            "what is athena",
             "what is mcp",
+            "what is a tool",
+            "what is a skill",
+            "what are athena",
+            # Questions about MCP
             "how does mcp",
             "mcp server",
-            # General help
-            "help me with",
-            "tell me about",
-            "explain",
+            "mcp configuration",
+            # General help about Athena
+            "help me with athena",
+            "tell me about athena",
+            "explain athena",
+            "explain mcp",
         ]
 
         return any(pattern in text_lower for pattern in doc_patterns)
@@ -651,12 +677,9 @@ Create .athena/commands/*.md files to define custom slash commands
             Answer from docs agent
         """
         from athena.agent.types import AgentType, get_system_prompt
-        from athena.agent.executor import AgentExecutor
+        from athena.agent.main_agent import MainAgent
         from athena.llm.client import LLMClient
         from athena.models.message import Message, Role
-
-        # Create a dedicated LLM client for the docs agent
-        docs_client = LLMClient(self.config.llm)
 
         # Create limited tool registry with only search/read tools
         from athena.tools.base import ToolRegistry
@@ -665,27 +688,31 @@ Create .athena/commands/*.md files to define custom slash commands
         docs_tools.register(GrepTool())
         docs_tools.register(ReadTool())
 
-        # Create docs agent executor
-        docs_agent = AgentExecutor(
-            llm_client=docs_client,
+        # Create docs agent with specialized config
+        from athena.models.config import AthenaConfig
+        docs_config = AthenaConfig(
+            llm=self.config.llm,
+            agent=self.config.agent,
+            tools=self.config.tools,
+            working_directory=self.config.working_directory,
+            debug=self.config.debug,
+        )
+
+        docs_agent = MainAgent(
+            config=docs_config,
             tool_registry=docs_tools,
-            config=self.config.agent,
+            job_queue=self.job_queue,
         )
 
         # Get system prompt for docs agent
         system_prompt = get_system_prompt(AgentType.ATHENA_DOCS)
-
-        # Build messages
-        messages = [
-            Message(role=Role.SYSTEM, content=system_prompt),
-            Message(role=Role.USER, content=question),
-        ]
+        docs_agent.add_system_message(system_prompt)
 
         # Run the agent
         console.print("[dim]🔍 Looking up documentation...[/dim]")
-        result = await docs_agent.run(messages)
+        result = await docs_agent.run(question)
 
-        return result.content
+        return result
 
     async def _handle_mcp_list(self) -> None:
         """Handle /mcp-list command."""
@@ -976,25 +1003,8 @@ Create .athena/commands/*.md files to define custom slash commands
         console.print(f"\n[bold]Task:[/bold] {task_description}\n")
 
         # Create a skill agent with the skill's system prompt
-        from athena.agent.executor import AgentExecutor
-        from athena.llm.client import LLMClient
+        from athena.agent.main_agent import MainAgent
         from athena.models.message import Message, Role
-
-        # Create LLM client (use skill's model if specified)
-        llm_config = self.config.llm
-        if skill.model:
-            # Override model for this skill
-            from athena.models.config import LLMConfig
-            llm_config = LLMConfig(
-                api_base=self.config.llm.api_base,
-                api_key=self.config.llm.api_key,
-                model=skill.model,
-                temperature=self.config.llm.temperature,
-                max_tokens=self.config.llm.max_tokens,
-                timeout=self.config.llm.timeout,
-            )
-
-        skill_client = LLMClient(llm_config)
 
         # Create limited tool registry if allowed_tools specified
         if skill.allowed_tools:
@@ -1010,24 +1020,42 @@ Create .athena/commands/*.md files to define custom slash commands
             # Use all tools
             skill_tools = self.tool_registry
 
-        # Create skill agent
-        skill_agent = AgentExecutor(
-            llm_client=skill_client,
-            tool_registry=skill_tools,
-            config=self.config.agent,
+        # Create skill config (override model if specified)
+        from athena.models.config import AthenaConfig, LLMConfig
+        llm_config = self.config.llm
+        if skill.model:
+            llm_config = LLMConfig(
+                api_base=self.config.llm.api_base,
+                api_key=self.config.llm.api_key,
+                model=skill.model,
+                temperature=self.config.llm.temperature,
+                max_tokens=self.config.llm.max_tokens,
+                timeout=self.config.llm.timeout,
+            )
+
+        skill_config = AthenaConfig(
+            llm=llm_config,
+            agent=self.config.agent,
+            tools=self.config.tools,
+            working_directory=self.config.working_directory,
+            debug=self.config.debug,
         )
 
-        # Build messages with skill's system prompt
-        messages = [
-            Message(role=Role.SYSTEM, content=skill.get_system_prompt()),
-            Message(role=Role.USER, content=task_description),
-        ]
+        # Create skill agent
+        skill_agent = MainAgent(
+            config=skill_config,
+            tool_registry=skill_tools,
+            job_queue=self.job_queue,
+        )
+
+        # Add skill's system prompt
+        skill_agent.add_system_message(skill.get_system_prompt())
 
         # Run the skill agent
         try:
-            result = await skill_agent.run(messages)
+            result = await skill_agent.run(task_description)
             console.print("\n[bold cyan]Skill Result:[/bold cyan]")
-            console.print(Markdown(result.content))
+            console.print(Markdown(result))
         except Exception as e:
             console.print(f"\n[red]Error executing skill:[/red] {e}")
             if self.config.debug:

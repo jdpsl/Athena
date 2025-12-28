@@ -32,6 +32,9 @@ class AgentConfig(BaseModel):
     fallback_mode: bool = Field(
         default=False, description="Use text-based tool calling for models without function calling"
     )
+    streaming: bool = Field(
+        default=False, description="Enable streaming responses (show output as generated)"
+    )
 
 
 class ToolsConfig(BaseModel):

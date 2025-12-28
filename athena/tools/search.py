@@ -192,6 +192,13 @@ class GrepTool(Tool):
                         elif output_mode == "content":
                             for line_num, line_content in file_matches:
                                 results.append(f"{file_path}:{line_num}: {line_content}")
+                                # Limit results to prevent huge outputs
+                                if len(results) >= 1000:
+                                    break
+
+                        # Break outer loop if we hit limit
+                        if len(results) >= 1000:
+                            break
 
                 except Exception:
                     # Skip files that can't be read
@@ -200,7 +207,10 @@ class GrepTool(Tool):
             if not results:
                 output = f"No matches found for pattern: {pattern}"
             else:
-                output = "\n".join(results)
+                if len(results) >= 1000:
+                    output = "\n".join(results[:1000]) + f"\n\n... (truncated, showing first 1000 of {len(results)} results)"
+                else:
+                    output = "\n".join(results)
 
             return ToolResult(
                 success=True,

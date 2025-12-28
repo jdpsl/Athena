@@ -99,15 +99,39 @@ class MainAgent:
             # Show iteration progress
             console.print(f"\n[dim]→ Iteration {iteration}/{max_iterations}[/dim]")
 
-            # Generate response with status
-            with console.status("[bold cyan]Thinking...[/bold cyan]", spinner="dots"):
-                # In fallback mode, don't send tools to API
-                tools = None if self.config.agent.fallback_mode else self.tool_registry.to_openai_tools()
+            # Generate response with status or streaming
+            # In fallback mode, don't send tools to API
+            tools = None if self.config.agent.fallback_mode else self.tool_registry.to_openai_tools()
 
-                response = await self.llm_client.generate(
+            if self.config.agent.streaming and not tools:
+                # Streaming mode (only without tools, as tool calls can't stream incrementally)
+                console.print("[dim]→ [/dim]", end="")
+
+                content_chunks = []
+                async for chunk in self.llm_client.generate_stream(
                     messages=self.messages,
                     tools=tools,
+                ):
+                    console.print(chunk, end="", style="")
+                    content_chunks.append(chunk)
+
+                console.print()  # Newline after streaming
+
+                # Create response from streamed chunks
+                from athena.models.message import Message, Role
+                response = Message(
+                    role=Role.ASSISTANT,
+                    content="".join(content_chunks),
+                    tool_calls=None,
+                    thinking=None,
                 )
+            else:
+                # Non-streaming mode (or when tools are present)
+                with console.status("[bold cyan]Thinking...[/bold cyan]", spinner="dots"):
+                    response = await self.llm_client.generate(
+                        messages=self.messages,
+                        tools=tools,
+                    )
 
             # If in fallback mode, parse text for tool calls
             if self.config.agent.fallback_mode and self.fallback_parser:

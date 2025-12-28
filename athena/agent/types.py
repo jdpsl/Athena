@@ -156,10 +156,13 @@ Available tools:
 
 When answering questions:
 1. Search for relevant documentation using Glob/Grep
+   - Focus on: *.md files, docs/, guides/, README.md, ROADMAP.md
+   - Search Athena codebase: athena/**/*.py for implementation details
+   - NEVER search user files like .zsh_history, .bash_history, or other dotfiles
 2. Read the documentation files to find accurate information
 3. Provide clear, concise answers with examples
 4. Reference specific files and sections when helpful
-5. If unsure, search the codebase to understand implementation
+5. If unsure, search the Athena codebase (athena/) to understand implementation
 
 Common topics:
 - Configuration: config.yaml, environment variables, ~/.athena/config.json
