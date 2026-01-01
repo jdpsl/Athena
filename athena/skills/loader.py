@@ -23,26 +23,38 @@ class SkillLoader:
     def discover_skills(self) -> dict[str, Skill]:
         """Discover skills from global and project locations.
 
-        Checks in order:
-        1. ~/.athena/skills/ (global skills)
-        2. {working_dir}/.athena/skills/ (project skills)
+        Checks in order (later locations override earlier):
+        1. ~/.athena/skills/ (global Athena skills)
+        2. ~/.claude/skills/ (global Claude Code skills)
+        3. {working_dir}/.athena/skills/ (project Athena skills)
+        4. {working_dir}/.claude/skills/ (project Claude Code skills)
 
-        Project skills override global skills with the same name.
+        This enables compatibility with both Athena and Claude Code skill formats.
 
         Returns:
             Dictionary mapping skill names to Skill objects
         """
         self.skills = {}
 
-        # Load global skills from ~/.athena/skills/
-        global_skills_dir = Path.home() / ".athena" / "skills"
-        if global_skills_dir.exists():
-            self._load_skills_from_directory(global_skills_dir, scope="global")
+        # Load global Athena skills from ~/.athena/skills/
+        global_athena_skills = Path.home() / ".athena" / "skills"
+        if global_athena_skills.exists():
+            self._load_skills_from_directory(global_athena_skills, scope="global-athena")
 
-        # Load project skills from .athena/skills/
-        project_skills_dir = self.working_directory / ".athena" / "skills"
-        if project_skills_dir.exists():
-            self._load_skills_from_directory(project_skills_dir, scope="project")
+        # Load global Claude Code skills from ~/.claude/skills/
+        global_claude_skills = Path.home() / ".claude" / "skills"
+        if global_claude_skills.exists():
+            self._load_skills_from_directory(global_claude_skills, scope="global-claude")
+
+        # Load project Athena skills from .athena/skills/
+        project_athena_skills = self.working_directory / ".athena" / "skills"
+        if project_athena_skills.exists():
+            self._load_skills_from_directory(project_athena_skills, scope="project-athena")
+
+        # Load project Claude Code skills from .claude/skills/
+        project_claude_skills = self.working_directory / ".claude" / "skills"
+        if project_claude_skills.exists():
+            self._load_skills_from_directory(project_claude_skills, scope="project-claude")
 
         logger.info(f"Discovered {len(self.skills)} skill(s)")
         return self.skills

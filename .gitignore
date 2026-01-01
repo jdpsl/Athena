@@ -56,5 +56,8 @@ Thumbs.db
 athena.db
 *.log
 
+# Backups (before refactoring)
+.backup/
+
 # Claude Code
 .claude/

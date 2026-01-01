@@ -134,8 +134,46 @@ class AthenaSession:
         Returns:
             System prompt
         """
-        return """You are Athena, an AI coding assistant. You help users with software engineering tasks.
+        # Build interaction mode instructions based on config
+        interaction_instructions = ""
+        if self.config.agent.interaction_mode == "collaborative":
+            interaction_instructions = """
+COLLABORATIVE MODE - Ask Before Acting:
+You are operating in collaborative mode. Before executing tasks, you should:
+1. Ask clarifying questions when the user's intent is ambiguous
+2. Present your planned approach and get confirmation for non-trivial tasks
+3. Explain what you're about to do before making significant changes
+4. Offer options when multiple valid approaches exist
+5. Use AskUserQuestion proactively to gather requirements
 
+When to ask questions:
+- Task affects multiple files (ask for confirmation of approach)
+- Multiple implementation approaches exist (present options using AskUserQuestion)
+- User request is vague or could mean different things (clarify intent)
+- Making destructive changes (confirm before proceeding)
+- Adding significant new functionality (verify requirements first)
+- Architectural decisions needed (database choice, library selection, design patterns)
+
+How to be collaborative:
+- Start by understanding: "Let me make sure I understand what you want..."
+- Present your plan: "Here's my approach: [explain]. Does this match your intent?"
+- Offer choices: Use AskUserQuestion with multiple choice when there are 2-4 valid options
+- Explain trade-offs: "Option A is faster but less flexible, Option B is more robust..."
+- Get feedback before major work
+
+Examples of good collaboration:
+- User: "Add authentication" → You: Ask about auth method (JWT vs sessions vs OAuth)
+- User: "Make it faster" → You: Ask what's slow, present optimization options
+- User: "Add dark mode" → You: Ask about theme system approach, CSS vars vs classes
+- User: "Fix the bug" → You: Investigate first, then explain root cause and ask for approval
+
+IMPORTANT: Balance helpfulness with efficiency. For simple, obvious tasks (like "fix this
+typo" or "add a comment"), just do it. Save questions for tasks where your judgment
+could differ from the user's intent or when multiple valid approaches exist.
+"""
+
+        base_prompt = f"""You are Athena, an AI coding assistant. You help users with software engineering tasks.
+{interaction_instructions}
 You have access to tools for:
 - File operations: Read, Write, Edit, Insert, Delete, Move, Copy, ListDir, MakeDir
 - Search: Glob (find files by pattern), Grep (search file contents with regex)
@@ -188,8 +226,12 @@ Git Tools (use these for viewing/committing, but use Bash for 'git add'):
 - GitBranch - List, create, switch, or delete branches
 
 User Interaction:
-- AskUserQuestion - When you need clarification, ask the user!
-  Examples: "Which approach?", "What should X be?", "Is this correct?"
+- AskUserQuestion - Ask clarifying questions proactively!
+  * Simple format: question="What should X be?", context="Additional info"
+  * Multiple choice: questions=[dict with question, header, options, multiSelect fields]
+  * Use multiple choice when presenting 2-4 options (automatic "Other" option added)
+  Examples: Architecture decisions, library choices, implementation approaches
+  IMPORTANT: Use this tool frequently in collaborative mode!
 
 Task Management:
 - TodoWrite - Track progress on multi-step tasks:
@@ -220,19 +262,22 @@ Web Tools:
 - IMPORTANT: When using WebSearch, always include a "Sources:" section in your response with links
 
 When working on tasks:
-1. ALWAYS Read files before editing them (required for Edit/Write tools)
-2. Use TodoWrite proactively for tasks with 3+ steps (helps user see progress)
-3. Proactively use Bash for: tests, builds, installs, git add, shell operations
-4. Use Search tools (Glob/Grep) to find files and code before making assumptions
-5. Use AskUserQuestion if you're unsure about approach or details
-6. Use specialized Git tools (GitStatus, GitDiff, etc.) for viewing git state
-7. Use Task tool to spawn sub-agents for complex exploration or planning
-8. Use WebSearch and WebFetch when you need docs or encounter unfamiliar tech
-9. Use file operation tools (Read, Write, Edit, Insert) instead of cat/echo for file ops
-10. Always test your changes by running tests with Bash
-11. Be thorough and careful with code changes
+1. IN COLLABORATIVE MODE: Ask clarifying questions before starting non-trivial work
+2. ALWAYS Read files before editing them (required for Edit/Write tools)
+3. Use TodoWrite proactively for tasks with 3+ steps (helps user see progress)
+4. Use AskUserQuestion with multiple choice when presenting 2-4 implementation options
+5. Explain your approach before making significant changes (multi-file, architectural)
+6. Use Search tools (Glob/Grep) to understand code before making changes
+7. Proactively use Bash for: tests, builds, installs, git add, shell operations
+8. Use specialized Git tools (GitStatus, GitDiff, etc.) for viewing git state
+9. Use Task tool to spawn sub-agents for complex exploration or planning
+10. Use WebSearch and WebFetch when you need docs or encounter unfamiliar tech
+11. Always test your changes by running tests with Bash
+12. Be thorough and careful with code changes
 
 You are running in a persistent session. The user is working on a coding project."""
+
+        return base_prompt
 
     async def run_interactive(self) -> None:
         """Run interactive REPL."""
@@ -316,6 +361,8 @@ You are running in a persistent session. The user is working on a coding project
 /fallback [on|off] - Toggle text-based tool calling fallback
 /thinking [on|off] - Toggle thinking tag injection (extended reasoning)
 /streaming [on|off] - Toggle streaming responses (real-time output)
+/compress_size [tokens] - Show or set context size before compression
+/mode [collaborative|autonomous] - Set interaction style (ask before acting vs execute directly)
 /save - Save current settings to ~/.athena/config.json
 /tools - List available tools
 /commands - List slash commands
@@ -333,6 +380,8 @@ You are running in a persistent session. The user is working on a coding project
 /apikey sk-1234567890abcdef
 /temp 0.5
 /fallback on
+/compress_size 12000
+/mode collaborative
 /save
 
 [bold]Fallback Mode:[/bold]
@@ -367,7 +416,8 @@ Create .athena/commands/*.md files to define custom slash commands
                     f"[cyan]Max Iterations:[/cyan] {self.config.agent.max_iterations}\n"
                     f"[cyan]Thinking Enabled:[/cyan] {self.config.agent.enable_thinking}\n"
                     f"[cyan]Streaming:[/cyan] {self.config.agent.streaming}\n"
-                    f"[cyan]Fallback Mode:[/cyan] {self.config.agent.fallback_mode}",
+                    f"[cyan]Fallback Mode:[/cyan] {self.config.agent.fallback_mode}\n"
+                    f"[cyan]Interaction Mode:[/cyan] {self.config.agent.interaction_mode}",
                     title="Current Configuration",
                     border_style="cyan",
                 )
@@ -479,6 +529,12 @@ Create .athena/commands/*.md files to define custom slash commands
                 api_key=self.config.llm.api_key,
                 temperature=self.config.llm.temperature,
                 mcp_servers=mcp_servers,
+                context_max_tokens=self.config.agent.context_max_tokens,
+                context_compression_threshold=self.config.agent.context_compression_threshold,
+                interaction_mode=self.config.agent.interaction_mode,
+                ask_before_execution=self.config.agent.ask_before_execution,
+                ask_before_multi_file_changes=self.config.agent.ask_before_multi_file_changes,
+                require_plan_approval=self.config.agent.require_plan_approval,
             )
             if self.config_manager.save(settings):
                 console.print("[green]✓[/green] Settings saved to ~/.athena/config.json")
@@ -486,10 +542,86 @@ Create .athena/commands/*.md files to define custom slash commands
                 console.print(f"  [cyan]API Base:[/cyan] {settings['api_base']}")
                 console.print(f"  [cyan]API Key:[/cyan] {'Set' if settings['api_key'] else 'Not set'}")
                 console.print(f"  [cyan]Temperature:[/cyan] {settings['temperature']}")
+                console.print(f"  [cyan]Context Size:[/cyan] {settings['context_max_tokens']} tokens (compresses at {int(settings['context_compression_threshold'] * 100)}%)")
+                console.print(f"  [cyan]Interaction Mode:[/cyan] {settings['interaction_mode']}")
                 if mcp_servers:
                     console.print(f"  [cyan]MCP Servers:[/cyan] {len(mcp_servers)} saved")
             else:
                 console.print("[red]Error:[/red] Failed to save settings")
+            return True
+
+        elif cmd == "/compress_size":
+            parts = command.split(maxsplit=1)
+            if len(parts) > 1:
+                try:
+                    new_size = int(parts[1])
+                    if new_size < 1000:
+                        console.print("[red]Error:[/red] Context size must be at least 1000 tokens")
+                        return True
+                    if new_size > 200000:
+                        console.print("[red]Error:[/red] Context size cannot exceed 200000 tokens")
+                        return True
+
+                    # Update config
+                    self.config.agent.context_max_tokens = new_size
+
+                    # Update existing agent's context manager
+                    if hasattr(self.agent, 'context_manager'):
+                        self.agent.context_manager.max_tokens = new_size
+                        trigger_point = int(new_size * self.config.agent.context_compression_threshold)
+                        console.print(f"[green]✓[/green] Context size set to {new_size:,} tokens")
+                        console.print(f"  Compression will trigger at {trigger_point:,} tokens ({int(self.config.agent.context_compression_threshold * 100)}%)")
+                        console.print(f"\n[dim]Use /save to persist this setting[/dim]")
+                    else:
+                        console.print(f"[green]✓[/green] Context size set to {new_size:,} tokens (will apply to new agents)")
+                        console.print(f"[dim]Use /save to persist this setting[/dim]")
+                except ValueError:
+                    console.print("[red]Error:[/red] Context size must be a number")
+                    console.print("[dim]Example: /compress_size 12000[/dim]")
+            else:
+                # Show current setting
+                current_size = self.config.agent.context_max_tokens
+                threshold = self.config.agent.context_compression_threshold
+                trigger_point = int(current_size * threshold)
+                console.print(f"[cyan]Current context size:[/cyan] {current_size:,} tokens")
+                console.print(f"[cyan]Compression trigger:[/cyan] {trigger_point:,} tokens ({int(threshold * 100)}%)")
+                console.print(f"\n[dim]Usage: /compress_size <token_count>[/dim]")
+                console.print(f"[dim]Example: /compress_size 12000[/dim]")
+            return True
+
+        elif cmd == "/mode":
+            parts = command.split(maxsplit=1)
+            if len(parts) > 1:
+                new_mode = parts[1].lower()
+                if new_mode in ["collaborative", "autonomous"]:
+                    # Update config
+                    self.config.agent.interaction_mode = new_mode
+
+                    # Show confirmation
+                    if new_mode == "collaborative":
+                        console.print(f"[green]✓[/green] Switched to [bold]collaborative mode[/bold]")
+                        console.print("[dim]Athena will ask clarifying questions before acting[/dim]")
+                        console.print("[dim]Similar to Claude Code's cautious approach[/dim]")
+                    else:
+                        console.print(f"[green]✓[/green] Switched to [bold]autonomous mode[/bold]")
+                        console.print("[dim]Athena will execute tasks independently[/dim]")
+
+                    console.print(f"\n[dim]Use /save to persist this setting[/dim]")
+                else:
+                    console.print("[red]Error:[/red] Mode must be 'collaborative' or 'autonomous'")
+                    console.print("[dim]Example: /mode collaborative[/dim]")
+            else:
+                # Show current mode
+                current_mode = self.config.agent.interaction_mode
+                console.print(f"[cyan]Current mode:[/cyan] [bold]{current_mode}[/bold]")
+
+                if current_mode == "collaborative":
+                    console.print("[dim]Athena asks questions before acting (like Claude Code)[/dim]")
+                else:
+                    console.print("[dim]Athena executes tasks independently[/dim]")
+
+                console.print(f"\n[dim]Usage: /mode <collaborative|autonomous>[/dim]")
+                console.print(f"[dim]Example: /mode collaborative[/dim]")
             return True
 
         elif cmd == "/fallback":
@@ -1011,7 +1143,7 @@ Create .athena/commands/*.md files to define custom slash commands
             from athena.tools.base import ToolRegistry
             skill_tools = ToolRegistry()
             for tool_name in skill.allowed_tools:
-                tool = self.tool_registry.get_tool(tool_name)
+                tool = self.tool_registry.get(tool_name)
                 if tool:
                     skill_tools.register(tool)
                 else:
@@ -1020,14 +1152,14 @@ Create .athena/commands/*.md files to define custom slash commands
             # Use all tools
             skill_tools = self.tool_registry
 
-        # Create skill config (override model if specified)
+        # Create skill config (override model and/or api_base if specified)
         from athena.models.config import AthenaConfig, LLMConfig
         llm_config = self.config.llm
-        if skill.model:
+        if skill.model or skill.api_base:
             llm_config = LLMConfig(
-                api_base=self.config.llm.api_base,
+                api_base=skill.api_base or self.config.llm.api_base,
                 api_key=self.config.llm.api_key,
-                model=skill.model,
+                model=skill.model or self.config.llm.model,
                 temperature=self.config.llm.temperature,
                 max_tokens=self.config.llm.max_tokens,
                 timeout=self.config.llm.timeout,

@@ -56,7 +56,13 @@ class PersistentConfigManager:
         google_api_key: str = None,
         google_cx: str = None,
         searxng_url: str = None,
-        mcp_servers: Optional[list] = None
+        mcp_servers: Optional[list] = None,
+        context_max_tokens: int = 8000,
+        context_compression_threshold: float = 0.75,
+        interaction_mode: str = "collaborative",
+        ask_before_execution: bool = True,
+        ask_before_multi_file_changes: bool = True,
+        require_plan_approval: bool = True
     ) -> dict:
         """Get current settings as a dict.
 
@@ -85,6 +91,12 @@ class PersistentConfigManager:
             "google_api_key": google_api_key,
             "google_cx": google_cx,
             "searxng_url": searxng_url,
+            "context_max_tokens": context_max_tokens,
+            "context_compression_threshold": context_compression_threshold,
+            "interaction_mode": interaction_mode,
+            "ask_before_execution": ask_before_execution,
+            "ask_before_multi_file_changes": ask_before_multi_file_changes,
+            "require_plan_approval": require_plan_approval,
         }
         if mcp_servers is not None:
             settings["mcp_servers"] = mcp_servers
@@ -122,3 +134,17 @@ class PersistentConfigManager:
             athena_config.mcp.servers = [MCPServerConfig(**server) for server in settings["mcp_servers"]]
             if athena_config.mcp.servers:
                 athena_config.mcp.enabled = True
+        # Context compression settings
+        if "context_max_tokens" in settings:
+            athena_config.agent.context_max_tokens = settings["context_max_tokens"]
+        if "context_compression_threshold" in settings:
+            athena_config.agent.context_compression_threshold = settings["context_compression_threshold"]
+        # Collaborative mode settings
+        if "interaction_mode" in settings:
+            athena_config.agent.interaction_mode = settings["interaction_mode"]
+        if "ask_before_execution" in settings:
+            athena_config.agent.ask_before_execution = settings["ask_before_execution"]
+        if "ask_before_multi_file_changes" in settings:
+            athena_config.agent.ask_before_multi_file_changes = settings["ask_before_multi_file_changes"]
+        if "require_plan_approval" in settings:
+            athena_config.agent.require_plan_approval = settings["require_plan_approval"]

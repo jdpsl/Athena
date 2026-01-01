@@ -97,17 +97,48 @@ The sub-agent has access to the same tools and will work autonomously."""
                     error=f"Invalid agent type: {subagent_type}. Must be one of: {[t.value for t in AgentType]}",
                 )
 
-            # Create sub-agent
-            sub_agent = SubAgent(
-                agent_type=agent_type,
-                config=self.config,
-                tool_registry=self.tool_registry,
-                job_queue=self.job_queue,
-                parent_job_id=self.current_job_id,
-            )
+            # Lazy import to avoid circular dependency
+            from athena.agent.specialized import ExploreAgent, PlanAgent, CodeReviewAgent, TestRunnerAgent
+
+            # Map agent type to specialized agent class
+            agent_map = {
+                AgentType.EXPLORE: ExploreAgent,
+                AgentType.PLAN: PlanAgent,
+                AgentType.CODE_REVIEWER: CodeReviewAgent,
+                AgentType.TEST_RUNNER: TestRunnerAgent,
+                AgentType.GENERAL: None,  # Use SubAgent for general-purpose
+            }
+
+            agent_class = agent_map.get(agent_type)
+
+            # Create appropriate agent
+            if agent_class:
+                # Use specialized agent with selective tools
+                sub_agent = agent_class(
+                    config=self.config,
+                    tool_registry=self.tool_registry,
+                    job_queue=self.job_queue,
+                )
+                # Add system prompt from agent types
+                from athena.agent.types import get_system_prompt
+                sub_agent.add_system_message(get_system_prompt(agent_type))
+            else:
+                # Fallback to SubAgent for general-purpose
+                sub_agent = SubAgent(
+                    agent_type=agent_type,
+                    config=self.config,
+                    tool_registry=self.tool_registry,
+                    job_queue=self.job_queue,
+                    parent_job_id=self.current_job_id,
+                )
 
             # Run sub-agent
-            result = await sub_agent.run(prompt, description)
+            if agent_class:
+                # BaseAgent.run(prompt, job_type)
+                result = await sub_agent.run(prompt, job_type=f"sub_agent_{agent_type.value}")
+            else:
+                # SubAgent.run(task_prompt, description)
+                result = await sub_agent.run(prompt, description)
 
             # Format output
             output = f"""Sub-Agent Report ({agent_type.value})

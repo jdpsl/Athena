@@ -14,6 +14,7 @@ class Skill(BaseModel):
     instructions: str = Field(description="Markdown instructions for Claude")
     allowed_tools: list[str] = Field(default_factory=list, description="Tools allowed without permission")
     model: Optional[str] = Field(default=None, description="Optional model override")
+    api_base: Optional[str] = Field(default=None, description="Optional API base URL override")
     skill_path: Path = Field(description="Path to the SKILL.md file")
 
     class Config:
@@ -75,6 +76,7 @@ class Skill(BaseModel):
             instructions=instructions,
             allowed_tools=allowed_tools,
             model=frontmatter.get("model"),
+            api_base=frontmatter.get("api_base"),
             skill_path=skill_path,
         )
 

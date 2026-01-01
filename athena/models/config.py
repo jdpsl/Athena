@@ -36,6 +36,28 @@ class AgentConfig(BaseModel):
         default=False, description="Enable streaming responses (show output as generated)"
     )
 
+    # Context compression settings
+    context_max_tokens: int = Field(
+        default=8000, description="Maximum tokens before compression is triggered"
+    )
+    context_compression_threshold: float = Field(
+        default=0.75, description="Compress when context reaches this % of max_tokens (0.0-1.0)"
+    )
+
+    # Cautious/Collaborative mode settings
+    interaction_mode: str = Field(
+        default="collaborative", description="Agent interaction style: 'collaborative' or 'autonomous'"
+    )
+    ask_before_execution: bool = Field(
+        default=True, description="Ask clarifying questions before executing tasks"
+    )
+    ask_before_multi_file_changes: bool = Field(
+        default=True, description="Ask confirmation before changing multiple files"
+    )
+    require_plan_approval: bool = Field(
+        default=True, description="Require user approval for implementation plans on complex tasks"
+    )
+
 
 class ToolsConfig(BaseModel):
     """Tools configuration."""
