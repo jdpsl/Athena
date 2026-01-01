@@ -226,41 +226,34 @@ Features:
         # Create header chip/tag
         header_text = Text(f" {header} ", style="bold white on blue")
 
-        # Create options table
-        table = Table(show_header=False, box=None, padding=(0, 2))
-        table.add_column("Number", style="cyan bold", width=4)
-        table.add_column("Option")
-
+        # Format options as simple text (no table for cleaner layout)
+        options_text = []
         for i, opt in enumerate(options, 1):
             label = opt.get("label", f"Option {i}")
             description = opt.get("description", "")
 
-            option_text = f"[bold]{label}[/bold]"
+            option_line = f"[cyan bold]{i}.[/cyan bold] [bold]{label}[/bold]"
             if description:
-                option_text += f"\n[dim]{description}[/dim]"
+                # Align description under the label (calculate proper indentation)
+                # "1. " = 3 chars + 1 for visual spacing = 4 total
+                indent = len(str(i)) + 3  # number length + ". " + 1 extra space
+                option_line += f"\n{' ' * indent}[dim]{description}[/dim]"
 
-            table.add_row(f"{i}.", option_text)
+            options_text.append(option_line)
 
         # Add "Other" option
-        table.add_row(
-            f"{len(options) + 1}.",
-            "[bold]Other[/bold]\n[dim]Provide your own answer[/dim]"
+        other_num = len(options) + 1
+        other_indent = len(str(other_num)) + 3
+        options_text.append(
+            f"[cyan bold]{other_num}.[/cyan bold] [bold]Other[/bold]\n{' ' * other_indent}[dim]Provide your own answer[/dim]"
         )
 
-        # Display in panel
-        panel_content = f"{question}\n\n"
-        from io import StringIO
-        from rich.console import Console as RichConsole
-
-        # Render table to string
-        string_io = StringIO()
-        temp_console = RichConsole(file=string_io, force_terminal=True, width=60)
-        temp_console.print(table)
-        panel_content = string_io.getvalue()
+        # Build panel content
+        panel_content = f"[bold]{question}[/bold]\n{header_text.markup}\n\n" + "\n\n".join(options_text)
 
         console.print(
             Panel(
-                f"[bold]{question}[/bold]\n" + header_text.markup + "\n\n" + panel_content,
+                panel_content,
                 title="[bold yellow]Question from Athena[/bold yellow]",
                 border_style="yellow",
             )

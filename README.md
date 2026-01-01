@@ -5,7 +5,10 @@ Open-source AI agent system for autonomous coding assistance, inspired by Claude
 ## Features
 
 - **Multi-agent architecture** - Spawn specialized agents for different tasks (Explore, Plan, code-reviewer, test-runner)
-- **Comprehensive tool system** - 21 tools including file operations, Git, web access, and more
+- **Comprehensive tool system** - 30+ tools including file operations, Git, web access, Jupyter notebooks, and more
+- **Jupyter Notebook support** - Create, read, edit, and execute `.ipynb` files programmatically
+- **Enhanced Git workflow** - Professional git operations with retry logic, safety features, and conventional commits
+- **Mathematical accuracy** - Built-in Math tool for 100% accurate calculations (no LLM errors!)
 - **Fallback mode** - Works with ANY model, even without function calling support
 - **Thinking tag injection** - Add reasoning capabilities to models that lack native thinking
 - **OpenAI protocol compatible** - Works with LM Studio, ChatGPT, Groq, Ollama, and more
@@ -14,7 +17,7 @@ Open-source AI agent system for autonomous coding assistance, inspired by Claude
 - **Hooks** - Event-driven control over agent behavior
 - **Slash commands** - Custom user-defined commands
 - **Web access** - Search the internet and fetch web pages
-- **Interactive questions** - Agent can ask you for clarification
+- **Interactive questions** - Agent can ask you for clarification with multiple-choice options
 
 ## Installation
 
@@ -27,6 +30,13 @@ Open-source AI agent system for autonomous coding assistance, inspired by Claude
 cd athena
 pip install -e .
 ```
+
+### Optional: Jupyter Support
+For notebook execution (NotebookExecute tool):
+```bash
+pip install jupyter-client ipykernel
+```
+Note: NotebookRead, NotebookEdit, and NotebookCreate work without this dependency.
 
 ## Quick Start
 
@@ -139,12 +149,14 @@ Many local models don't support OpenAI-style function calling. If you get JSON p
 - **Glob** - Find files by pattern (e.g., `**/*.py`, `src/**/*.tsx`)
 - **Grep** - Search file contents with regex, supports context lines
 
-### Git Version Control (5 tools)
+### Git Version Control (7 tools)
 - **GitStatus** - Check repository status, staged/modified files
 - **GitDiff** - View diffs (staged or unstaged)
-- **GitCommit** - Create commits (must stage files first with Bash)
+- **GitCommit** - Create commits with pre-commit hook handling and auto-amend
 - **GitLog** - View commit history
 - **GitBranch** - List, create, switch, or delete branches
+- **GitPush** - Push commits with automatic retry, safety checks, and force-push protection
+- **GitCreatePR** - Create GitHub Pull Requests using gh CLI
 
 ### Execution
 - **Bash** - Execute shell commands with timeout and output capture
@@ -164,8 +176,21 @@ Many local models don't support OpenAI-style function calling. If you get JSON p
   - `test-runner` - Run and analyze tests
   - `general-purpose` - Handle complex multi-step work
 
+### Mathematics
+- **Math** - Evaluate mathematical expressions safely and accurately
+  - Supports arithmetic, trigonometry, logarithms, special functions
+  - Large number support with arbitrary precision
+  - Always accurate (no LLM calculation errors!)
+  - Example: `"2**256"`, `"factorial(100)"`, `"sin(pi/4)"`
+
+### Jupyter Notebooks (4 tools)
+- **NotebookRead** - Read and display notebook contents with outputs
+- **NotebookEdit** - Modify cells (replace, insert, delete)
+- **NotebookExecute** - Run cells and capture outputs (requires jupyter-client)
+- **NotebookCreate** - Create new notebooks with initial structure
+
 ### User Interaction
-- **AskUserQuestion** - Ask clarifying questions during execution
+- **AskUserQuestion** - Ask clarifying questions with multiple-choice options during execution
 
 ## Built-in Commands
 
@@ -228,6 +253,25 @@ You: Check git status
 You: Show me the diff of my changes
 You: Create a commit with message "Add new feature"
 You: Switch to a new branch called feature-x
+You: Push my changes to GitHub
+You: Create a pull request for this feature
+```
+
+### Jupyter Notebooks
+```
+You: Create a new Jupyter notebook for data analysis
+You: Read my analysis.ipynb and show me what's in it
+You: Add a new cell to the notebook with pandas code
+You: Execute all cells in the notebook
+You: I have the notebook open in Jupyter Lab, add a visualization section
+```
+
+### Mathematical Calculations
+```
+You: Calculate 2 to the power of 256
+You: What's the factorial of 100?
+You: Calculate the sine of pi/4
+You: Find the GCD of 48 and 18
 ```
 
 ### Web Research
@@ -241,6 +285,30 @@ You: Fetch the documentation from https://docs.python.org/3/library/asyncio.html
 You: Explore the codebase and find where authentication is handled
 You: Review the code in auth.py for security issues
 ```
+
+## What Makes Athena Unique
+
+### Accuracy Advantage
+- **MathTool** provides 100% accurate calculations - no more LLM arithmetic errors
+- Handles large numbers (2^1000), complex expressions, and arbitrary precision
+- Unlike other AI assistants, Athena never makes calculation mistakes
+
+### Jupyter Integration
+- **Full programmatic control** over Jupyter notebooks
+- Create, read, edit, and execute notebooks without opening Jupyter
+- **Concurrent editing** - work in Jupyter Lab while Athena modifies the same notebook
+- Capture outputs automatically for batch processing
+
+### Professional Git Workflow
+- **Automatic retry** on network failures (3 attempts with exponential backoff)
+- **Safety features** - blocks force push to main/master, handles pre-commit hooks
+- **GitHub integration** - create PRs directly from CLI
+- **Conventional commits** - built-in commit message formatting and branch naming
+
+### Universal Model Support
+- **Fallback mode** works with ANY model, even without function calling
+- Supports local models (Llama, Mistral, Qwen) in LM Studio
+- Compatible with OpenAI, Groq, Ollama, and all OpenAI-compatible APIs
 
 ## Architecture
 

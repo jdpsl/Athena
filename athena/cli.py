@@ -89,8 +89,10 @@ class AthenaSession:
         """Register all available tools."""
         from athena.tools.web import WebSearchTool, WebFetchTool
         from athena.tools.user_interaction import AskUserQuestionTool
-        from athena.tools.git import GitStatusTool, GitDiffTool, GitCommitTool, GitLogTool, GitBranchTool
+        from athena.tools.git import GitStatusTool, GitDiffTool, GitCommitTool, GitLogTool, GitBranchTool, GitPushTool, GitCreatePRTool
         from athena.tools.file_system import DeleteFileTool, MoveFileTool, CopyFileTool, ListDirTool, MakeDirTool
+        from athena.tools.math import MathTool
+        from athena.tools.notebook import NotebookReadTool, NotebookEditTool, NotebookExecuteTool, NotebookCreateTool
 
         # File operations
         self.tool_registry.register(ReadTool())
@@ -119,6 +121,8 @@ class AthenaSession:
         self.tool_registry.register(GitCommitTool())
         self.tool_registry.register(GitLogTool())
         self.tool_registry.register(GitBranchTool())
+        self.tool_registry.register(GitPushTool())
+        self.tool_registry.register(GitCreatePRTool())
 
         # Web tools
         self.tool_registry.register(WebSearchTool())
@@ -127,6 +131,15 @@ class AthenaSession:
 
         # User interaction
         self.tool_registry.register(AskUserQuestionTool())
+
+        # Math
+        self.tool_registry.register(MathTool())
+
+        # Jupyter Notebooks
+        self.tool_registry.register(NotebookReadTool())
+        self.tool_registry.register(NotebookEditTool())
+        self.tool_registry.register(NotebookExecuteTool())
+        self.tool_registry.register(NotebookCreateTool())
 
     def _get_system_prompt(self) -> str:
         """Get the system prompt for the agent.
@@ -178,7 +191,9 @@ You have access to tools for:
 - File operations: Read, Write, Edit, Insert, Delete, Move, Copy, ListDir, MakeDir
 - Search: Glob (find files by pattern), Grep (search file contents with regex)
 - Execution: Bash (run shell commands - tests, builds, package management, git add, etc.)
-- Git: GitStatus, GitDiff, GitCommit, GitLog, GitBranch
+- Git: GitStatus, GitDiff, GitCommit, GitLog, GitBranch, GitPush, GitCreatePR
+- Math: Math (accurate mathematical expression evaluation)
+- Jupyter Notebooks: NotebookRead, NotebookEdit, NotebookExecute, NotebookCreate
 - Task management: TodoWrite for tracking multi-step tasks
 - Agent spawning: Task tool to spawn specialized sub-agents for complex work
 - Web access: WebSearch (internet search), WebFetch (fetch web pages)
@@ -218,12 +233,56 @@ Bash Tool - Use for shell operations:
 - File manipulation that needs shell features
 IMPORTANT: Proactively use Bash for these tasks - don't ask the user first!
 
-Git Tools (use these for viewing/committing, but use Bash for 'git add'):
+Git Tools (professional workflow with safety features):
 - GitStatus - See current changes, staged files, branch info
 - GitDiff - View diffs (staged or unstaged)
-- GitCommit - Create commits (use Bash to 'git add' files first!)
+- GitCommit - Create commits with pre-commit hook handling
+  * Automatically handles formatters (Black, Prettier)
+  * Auto-amends if hooks modify files
+  * Clear errors if hooks reject
+  * Use Bash to 'git add' files first!
 - GitLog - View commit history
 - GitBranch - List, create, switch, or delete branches
+- GitPush - Push with retry logic and safety checks
+  * Automatic retry on network failures (3 attempts)
+  * Blocks force push to main/master
+  * Helpful error messages
+- GitCreatePR - Create GitHub Pull Requests
+  * Requires gh CLI (brew install gh)
+  * Auto-detects current branch
+  * Supports draft PRs
+
+Math Tool - Accurate calculations without LLM errors:
+- Math - Evaluate mathematical expressions safely and accurately
+  * ALWAYS use this for calculations instead of doing math yourself!
+  * The LLM can make arithmetic errors, but this tool is always accurate
+  * Supports: Basic arithmetic (+, -, *, /, //, %, **)
+  * Functions: sin, cos, tan, sqrt, log, log10, factorial, gcd, degrees, radians
+  * Constants: pi, e, tau, inf, nan
+  * Large numbers and high precision (no token limits!)
+  * Examples: "123 * 456" → 56088, "sqrt(144)" → 12.0, "2**100", "factorial(20)"
+  IMPORTANT: Use Math tool for ALL calculations, even simple ones!
+
+Jupyter Notebook Tools - Interactive notebook development:
+- NotebookRead - Read and display notebook contents
+  * Shows cells (code/markdown), outputs, execution counts
+  * Use this BEFORE editing to see structure
+  * Displays text outputs, indicates images/plots
+- NotebookEdit - Modify notebook cells
+  * Actions: replace (modify cell), insert (add new cell), delete (remove cell)
+  * Cell types: code or markdown
+  * IMPORTANT: Use NotebookRead first to see cell numbers!
+  * Examples: replace cell 2, insert markdown at 1, delete cell 5
+- NotebookExecute - Run cells and capture outputs
+  * Executes code cells using Jupyter kernel
+  * Updates notebook with results (text, plots, errors)
+  * Can execute specific cell or "all" cells
+  * Requires: jupyter-client and ipykernel installed
+- NotebookCreate - Create new notebooks
+  * Creates empty or pre-populated notebooks
+  * Specify kernel (python3 default)
+  * Optional initial cells
+  IMPORTANT: Always NotebookRead before editing to understand cell structure!
 
 User Interaction:
 - AskUserQuestion - Ask clarifying questions proactively!
