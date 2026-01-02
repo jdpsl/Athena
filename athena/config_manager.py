@@ -62,7 +62,8 @@ class PersistentConfigManager:
         interaction_mode: str = "collaborative",
         ask_before_execution: bool = True,
         ask_before_multi_file_changes: bool = True,
-        require_plan_approval: bool = True
+        require_plan_approval: bool = True,
+        disabled_tools: Optional[list[str]] = None
     ) -> dict:
         """Get current settings as a dict.
 
@@ -77,6 +78,7 @@ class PersistentConfigManager:
             google_cx: Google Custom Search Engine ID
             searxng_url: SearXNG instance URL
             mcp_servers: MCP server configurations
+            disabled_tools: List of disabled tool names
 
         Returns:
             Settings dict
@@ -100,6 +102,8 @@ class PersistentConfigManager:
         }
         if mcp_servers is not None:
             settings["mcp_servers"] = mcp_servers
+        if disabled_tools is not None:
+            settings["disabled_tools"] = disabled_tools
         return settings
 
     def apply_to_config(self, athena_config, settings: dict):
@@ -148,3 +152,14 @@ class PersistentConfigManager:
             athena_config.agent.ask_before_multi_file_changes = settings["ask_before_multi_file_changes"]
         if "require_plan_approval" in settings:
             athena_config.agent.require_plan_approval = settings["require_plan_approval"]
+
+    def get_disabled_tools(self, settings: dict) -> set[str]:
+        """Extract disabled tools from saved settings.
+
+        Args:
+            settings: Settings dict from saved config
+
+        Returns:
+            Set of disabled tool names
+        """
+        return set(settings.get("disabled_tools", []))

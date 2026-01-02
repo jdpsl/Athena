@@ -50,17 +50,22 @@ class AthenaSession:
         self.job_queue = SQLiteJobQueue()
         await self.job_queue.initialize()
 
-        # Register basic tools first
-        self._register_tools()
+        # Load disabled tools from saved config
+        saved_settings = self.config_manager.load()
+        disabled_tools = self.config_manager.get_disabled_tools(saved_settings) if saved_settings else set()
+
+        # Auto-discover and register tools
+        self._register_tools(disabled_tools)
 
         # Register Task tool (needs job queue)
         from athena.tools.task import TaskTool
-        task_tool = TaskTool(
-            config=self.config,
-            tool_registry=self.tool_registry,
-            job_queue=self.job_queue,
-        )
-        self.tool_registry.register(task_tool)
+        if "Task" not in disabled_tools:
+            task_tool = TaskTool(
+                config=self.config,
+                tool_registry=self.tool_registry,
+                job_queue=self.job_queue,
+            )
+            self.tool_registry.register(task_tool)
 
         # Initialize MCP clients and register MCP tools
         if self.config.mcp.enabled:
@@ -85,61 +90,44 @@ class AthenaSession:
         # Add system prompt
         self.agent.add_system_message(self._get_system_prompt())
 
-    def _register_tools(self) -> None:
-        """Register all available tools."""
-        from athena.tools.web import WebSearchTool, WebFetchTool
-        from athena.tools.user_interaction import AskUserQuestionTool
-        from athena.tools.git import GitStatusTool, GitDiffTool, GitCommitTool, GitLogTool, GitBranchTool, GitPushTool, GitCreatePRTool
-        from athena.tools.file_system import DeleteFileTool, MoveFileTool, CopyFileTool, ListDirTool, MakeDirTool
-        from athena.tools.math import MathTool
-        from athena.tools.notebook import NotebookReadTool, NotebookEditTool, NotebookExecuteTool, NotebookCreateTool
+    def _register_tools(self, disabled_tools: set[str] = None) -> None:
+        """Register all available tools using auto-discovery.
 
-        # File operations
-        self.tool_registry.register(ReadTool())
-        self.tool_registry.register(WriteTool())
-        self.tool_registry.register(EditTool())
-        self.tool_registry.register(InsertTool())
-        self.tool_registry.register(DeleteFileTool())
-        self.tool_registry.register(MoveFileTool())
-        self.tool_registry.register(CopyFileTool())
-        self.tool_registry.register(ListDirTool())
-        self.tool_registry.register(MakeDirTool())
+        Args:
+            disabled_tools: Set of tool names to skip registering
+        """
+        if disabled_tools is None:
+            disabled_tools = set()
 
-        # Search tools
-        self.tool_registry.register(GlobTool())
-        self.tool_registry.register(GrepTool())
+        # Tools that need special initialization (can't be auto-discovered)
+        special_tools_to_skip = {"Task"}  # Task tool registered separately with job_queue
 
-        # Execution
-        self.tool_registry.register(BashTool(timeout_ms=self.config.tools.bash_timeout))
+        # Add special tools to disabled list temporarily for auto-discovery
+        temp_disabled = disabled_tools | special_tools_to_skip
 
-        # Task management
-        self.tool_registry.register(TodoWriteTool())
+        # Auto-discover and register all tools
+        discovered = self.tool_registry.auto_discover_tools(temp_disabled)
 
-        # Git tools
-        self.tool_registry.register(GitStatusTool())
-        self.tool_registry.register(GitDiffTool())
-        self.tool_registry.register(GitCommitTool())
-        self.tool_registry.register(GitLogTool())
-        self.tool_registry.register(GitBranchTool())
-        self.tool_registry.register(GitPushTool())
-        self.tool_registry.register(GitCreatePRTool())
+        # Manually register tools that need special initialization
+        from athena.tools.bash import BashTool
+        from athena.tools.web import WebFetchTool
 
-        # Web tools
-        self.tool_registry.register(WebSearchTool())
-        self._web_fetch_tool = WebFetchTool()  # Gets LLM client after agent is created
-        self.tool_registry.register(self._web_fetch_tool)
+        # Bash tool needs timeout configuration
+        if "Bash" not in disabled_tools:
+            bash_tool = BashTool(timeout_ms=self.config.tools.bash_timeout)
+            self.tool_registry.register(bash_tool)
+            if "Bash" in self.tool_registry.disabled_tools:
+                self.tool_registry.disabled_tools.remove("Bash")
 
-        # User interaction
-        self.tool_registry.register(AskUserQuestionTool())
+        # WebFetch tool gets LLM client later
+        if "WebFetch" not in disabled_tools:
+            self._web_fetch_tool = WebFetchTool()
+            self.tool_registry.register(self._web_fetch_tool)
+            if "WebFetch" in self.tool_registry.disabled_tools:
+                self.tool_registry.disabled_tools.remove("WebFetch")
 
-        # Math
-        self.tool_registry.register(MathTool())
-
-        # Jupyter Notebooks
-        self.tool_registry.register(NotebookReadTool())
-        self.tool_registry.register(NotebookEditTool())
-        self.tool_registry.register(NotebookExecuteTool())
-        self.tool_registry.register(NotebookCreateTool())
+        # Restore the correct disabled_tools set
+        self.tool_registry.disabled_tools = disabled_tools
 
     def _get_system_prompt(self) -> str:
         """Get the system prompt for the agent.
@@ -424,6 +412,7 @@ You are running in a persistent session. The user is working on a coding project
 /mode [collaborative|autonomous] - Set interaction style (ask before acting vs execute directly)
 /save - Save current settings to ~/.athena/config.json
 /tools - List available tools
+/tool <name> [on|off] - Show tool info or enable/disable a tool
 /commands - List slash commands
 /skills - List available skills
 /skill <name> [task] - Invoke a skill
@@ -582,6 +571,9 @@ Create .athena/commands/*.md files to define custom slash commands
                 for s in self.config.mcp.servers
             ] if self.config.mcp.servers else None
 
+            # Get disabled tools list
+            disabled_tools = list(self.tool_registry.disabled_tools) if self.tool_registry.disabled_tools else None
+
             settings = self.config_manager.get_current_settings(
                 model=self.config.llm.model,
                 api_base=self.config.llm.api_base,
@@ -594,6 +586,7 @@ Create .athena/commands/*.md files to define custom slash commands
                 ask_before_execution=self.config.agent.ask_before_execution,
                 ask_before_multi_file_changes=self.config.agent.ask_before_multi_file_changes,
                 require_plan_approval=self.config.agent.require_plan_approval,
+                disabled_tools=disabled_tools,
             )
             if self.config_manager.save(settings):
                 console.print("[green]✓[/green] Settings saved to ~/.athena/config.json")
@@ -605,6 +598,8 @@ Create .athena/commands/*.md files to define custom slash commands
                 console.print(f"  [cyan]Interaction Mode:[/cyan] {settings['interaction_mode']}")
                 if mcp_servers:
                     console.print(f"  [cyan]MCP Servers:[/cyan] {len(mcp_servers)} saved")
+                if disabled_tools:
+                    console.print(f"  [cyan]Disabled Tools:[/cyan] {len(disabled_tools)} disabled")
             else:
                 console.print("[red]Error:[/red] Failed to save settings")
             return True
@@ -766,8 +761,71 @@ Create .athena/commands/*.md files to define custom slash commands
             tools = self.tool_registry.list_tools()
             console.print("[bold cyan]Available Tools:[/bold cyan]")
             for tool in tools:
-                console.print(f"  • [green]{tool.name}[/green]: {tool.description}")
+                status = "[green]●[/green]" if self.tool_registry.is_tool_enabled(tool.name) else "[red]○[/red]"
+                console.print(f"  {status} [green]{tool.name}[/green]: {tool.description}")
+            console.print(f"\n[dim]Total: {len(tools)} tools enabled[/dim]")
+            console.print(f"[dim]Use /tool <name> to see details or /tool <name> on/off to enable/disable[/dim]")
             return True
+
+        elif cmd == "/tool":
+            parts = command.split(maxsplit=2)
+            if len(parts) < 2:
+                console.print("[red]Error:[/red] Usage: /tool <name> [on|off]")
+                console.print("\n[dim]Examples:[/dim]")
+                console.print("  /tool Read              - Show info about Read tool")
+                console.print("  /tool WebSearch off     - Disable WebSearch tool")
+                console.print("  /tool Bash on           - Enable Bash tool")
+                return True
+
+            tool_name = parts[1]
+
+            if len(parts) == 2:
+                # Show tool info
+                info = self.tool_registry.get_tool_info(tool_name)
+                if not info:
+                    console.print(f"[red]Error:[/red] Tool '{tool_name}' not found")
+                    console.print("\n[dim]Use /tools to see available tools[/dim]")
+                    return True
+
+                status = "[green]enabled[/green]" if info["enabled"] else "[red]disabled[/red]"
+                console.print(f"\n[bold cyan]{info['name']}[/bold cyan] - {status}")
+                console.print(f"\n{info['description']}\n")
+
+                if info['parameters']:
+                    console.print("[bold]Parameters:[/bold]")
+                    for param in info['parameters']:
+                        required = "[red]*[/red]" if param['required'] else "[dim](optional)[/dim]"
+                        console.print(f"  • [cyan]{param['name']}[/cyan] ({param['type']}) {required}")
+                        console.print(f"    {param['description']}")
+                else:
+                    console.print("[dim]No parameters[/dim]")
+
+                console.print(f"\n[dim]Use /tool {tool_name} on/off to enable/disable[/dim]")
+                return True
+
+            else:
+                # Enable/disable tool
+                action = parts[2].lower()
+
+                if action == "on":
+                    if self.tool_registry.enable_tool(tool_name):
+                        console.print(f"[green]✓[/green] Tool '{tool_name}' enabled")
+                        console.print("[dim]Use /save to persist this change[/dim]")
+                    else:
+                        console.print(f"[yellow]Tool '{tool_name}' is already enabled or not found[/yellow]")
+
+                elif action == "off":
+                    if self.tool_registry.disable_tool(tool_name):
+                        console.print(f"[green]✓[/green] Tool '{tool_name}' disabled")
+                        console.print("[dim]Use /save to persist this change[/dim]")
+                    else:
+                        console.print(f"[yellow]Tool '{tool_name}' not found or already disabled[/yellow]")
+
+                else:
+                    console.print("[red]Error:[/red] Use 'on' or 'off'")
+                    console.print("[dim]Example: /tool WebSearch off[/dim]")
+
+                return True
 
         elif cmd == "/commands":
             commands = self.command_loader.list_commands()

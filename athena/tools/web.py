@@ -7,6 +7,17 @@ from urllib.parse import quote_plus
 import requests
 from athena.models.tool import Tool, ToolParameter, ToolParameterType, ToolResult
 
+# Import ddgs for DuckDuckGo search (try both package names)
+try:
+    from ddgs import DDGS
+    DDGS_AVAILABLE = True
+except ImportError:
+    try:
+        from duckduckgo_search import DDGS
+        DDGS_AVAILABLE = True
+    except ImportError:
+        DDGS_AVAILABLE = False
+
 
 class WebSearchTool(Tool):
     """Tool for searching the web."""
@@ -107,9 +118,25 @@ with markdown links to the URLs you reference."""
             )
 
     def _search_duckduckgo(self, query: str, num_results: int) -> list[dict]:
-        """Search using DuckDuckGo HTML (no API key needed)."""
+        """Search using DuckDuckGo via ddgs library (no API key needed)."""
         try:
-            # Use DuckDuckGo HTML search
+            # Use ddgs library if available
+            if DDGS_AVAILABLE:
+                ddgs = DDGS()
+                raw_results = list(ddgs.text(query, region='wt-wt', max_results=num_results))
+
+                # Map ddgs result format to our expected format
+                results = []
+                for result in raw_results:
+                    results.append({
+                        "title": result.get('title', 'N/A'),
+                        "snippet": result.get('body', 'N/A'),
+                        "url": result.get('href', 'N/A'),
+                    })
+
+                return results
+
+            # Fallback to HTML scraping if ddgs not available (legacy)
             url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
