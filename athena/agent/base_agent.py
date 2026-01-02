@@ -247,26 +247,49 @@ class BaseAgent(ABC):
             # Parallel execution
             import asyncio
 
-            with console.status(
-                f"[bold green]Executing {len(tool_calls)} tools...[/bold green]",
-                spinner="dots"
-            ):
+            # Check if any tools are interactive (shouldn't be parallel, but handle gracefully)
+            interactive_tools = {"AskUserQuestion"}
+            has_interactive = any(tc.name in interactive_tools for tc in tool_calls)
+
+            if has_interactive:
+                # Execute without spinner if interactive tools are present
                 results = await asyncio.gather(
                     *[
                         self.tool_registry.execute(tc.name, **tc.parameters)
                         for tc in tool_calls
                     ]
                 )
+            else:
+                # Execute with spinner for non-interactive tools
+                with console.status(
+                    f"[bold green]Executing {len(tool_calls)} tools...[/bold green]",
+                    spinner="dots"
+                ):
+                    results = await asyncio.gather(
+                        *[
+                            self.tool_registry.execute(tc.name, **tc.parameters)
+                            for tc in tool_calls
+                        ]
+                    )
         else:
             # Sequential execution
             results = []
             for tc in tool_calls:
-                with console.status(
-                    f"[bold green]Executing {tc.name}...[/bold green]",
-                    spinner="dots"
-                ):
+                # Skip spinner for interactive tools (they need clean console for user input)
+                interactive_tools = {"AskUserQuestion"}
+
+                if tc.name in interactive_tools:
+                    # Execute without spinner for interactive tools
                     result = await self.tool_registry.execute(tc.name, **tc.parameters)
                     results.append(result)
+                else:
+                    # Execute with spinner for non-interactive tools
+                    with console.status(
+                        f"[bold green]Executing {tc.name}...[/bold green]",
+                        spinner="dots"
+                    ):
+                        result = await self.tool_registry.execute(tc.name, **tc.parameters)
+                        results.append(result)
 
                 # Show result status
                 if result.success:
