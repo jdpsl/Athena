@@ -5,7 +5,8 @@ Open-source AI agent system for autonomous coding assistance, inspired by Claude
 ## Features
 
 - **Multi-agent architecture** - Spawn specialized agents for different tasks (Explore, Plan, code-reviewer, test-runner)
-- **Comprehensive tool system** - 30+ tools including file operations, Git, web access, Jupyter notebooks, and more
+- **Comprehensive tool system** - 28+ tools with auto-discovery, including file operations, Git, web access, Jupyter notebooks, and more
+- **Tool management** - Enable/disable tools on the fly with `/tool` command, state persists across sessions
 - **Jupyter Notebook support** - Create, read, edit, and execute `.ipynb` files programmatically
 - **Enhanced Git workflow** - Professional git operations with retry logic, safety features, and conventional commits
 - **Mathematical accuracy** - Built-in Math tool for 100% accurate calculations (no LLM errors!)
@@ -37,6 +38,13 @@ For notebook execution (NotebookExecute tool):
 pip install jupyter-client ipykernel
 ```
 Note: NotebookRead, NotebookEdit, and NotebookCreate work without this dependency.
+
+### Optional: Web Search
+For WebSearch tool (DuckDuckGo search):
+```bash
+pip install ddgs
+```
+Note: WebSearch will fall back to HTML scraping if ddgs is not available, but the library provides more reliable results.
 
 ## Quick Start
 
@@ -192,6 +200,58 @@ Many local models don't support OpenAI-style function calling. If you get JSON p
 ### User Interaction
 - **AskUserQuestion** - Ask clarifying questions with multiple-choice options during execution
 
+## Tool Management
+
+Athena features a powerful tool management system that lets you control which tools are available:
+
+### View All Tools
+```bash
+/tools
+```
+Shows all tools with status indicators (● enabled, ○ disabled)
+
+### Inspect a Tool
+```bash
+/tool Read
+```
+Shows detailed information about the Read tool:
+- Description
+- Parameters (name, type, required/optional)
+- Current status (enabled/disabled)
+
+### Disable a Tool
+```bash
+/tool WebSearch off
+```
+Removes WebSearch from the available tools. The agent won't be able to use it.
+
+### Enable a Tool
+```bash
+/tool WebSearch on
+```
+Re-enables a previously disabled tool.
+
+### Save Preferences
+```bash
+/save
+```
+Saves your tool enable/disable preferences to `~/.athena/config.json`. Settings are automatically loaded on startup.
+
+### Why Disable Tools?
+- **Reduce clutter** - Hide tools you never use
+- **Faster responses** - Fewer tools = smaller context for the LLM
+- **Control capabilities** - Limit what the agent can do
+- **Testing** - Test with specific tool subsets
+
+### Auto-Discovery
+Tools are automatically discovered from `athena/tools/` on startup:
+- No manual registration needed
+- Just drop a `.py` file with a Tool class
+- Automatically instantiated and registered
+- Respects disabled tools from config
+
+See [TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md) for detailed documentation.
+
 ## Built-in Commands
 
 ### Configuration
@@ -209,7 +269,9 @@ Many local models don't support OpenAI-style function calling. If you get JSON p
 - `/exit` or `/quit` - Exit Athena
 
 ### Information
-- `/tools` - List all available tools
+- `/tools` - List all available tools with enabled/disabled status
+- `/tool <name>` - Show detailed info about a specific tool
+- `/tool <name> on/off` - Enable or disable a tool
 - `/commands` - List custom slash commands
 
 ## Custom Slash Commands
@@ -288,6 +350,12 @@ You: Review the code in auth.py for security issues
 
 ## What Makes Athena Unique
 
+### Tool Auto-Discovery & Management
+- **Zero-configuration tools** - just drop a Python file in `athena/tools/` and it's available
+- **Dynamic enable/disable** - control which tools are active with `/tool` command
+- **Persistent preferences** - tool settings saved and restored automatically
+- **Developer-friendly** - no manual registration, instant availability
+
 ### Accuracy Advantage
 - **MathTool** provides 100% accurate calculations - no more LLM arithmetic errors
 - Handles large numbers (2^1000), complex expressions, and arbitrary precision
@@ -319,6 +387,8 @@ You: Review the code in auth.py for security issues
 
 ### Tool System
 - Modular design with base `Tool` class
+- **Auto-discovery** - scans `athena/tools/` and registers tools automatically
+- **Dynamic management** - enable/disable tools at runtime with state persistence
 - Tools convert to OpenAI function format
 - Registry pattern for dynamic tool loading
 - Async execution with parallel support
@@ -419,6 +489,10 @@ ruff check athena/
 ```
 
 ### Creating New Tools
+
+Athena automatically discovers and loads tools from the `athena/tools/` directory. Just create a new Python file with your tool class:
+
+**1. Create `athena/tools/my_tool.py`:**
 ```python
 from athena.models.tool import Tool, ToolParameter, ToolParameterType, ToolResult
 
@@ -450,13 +524,17 @@ class MyTool(Tool):
         )
 ```
 
-Register in `athena/cli.py`:
-```python
-from athena.tools.my_tool import MyTool
+**2. That's it!** The tool will be automatically discovered on next startup.
 
-# In _register_tools method:
-self.tool_registry.register(MyTool())
+**3. Verify it's loaded:**
+```bash
+athena
+/tools  # Your tool will appear in the list
 ```
+
+**No manual registration needed!** Tools are automatically discovered, instantiated, and registered.
+
+**Note:** Tools that require special initialization (like custom constructors with required parameters) need to be registered manually in `athena/cli.py`'s `_register_tools()` method.
 
 ## Contributing
 
