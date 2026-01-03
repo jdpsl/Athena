@@ -400,6 +400,7 @@ You are running in a persistent session. The user is working on a coding project
 /help - Show this help
 /exit - Exit Athena
 /clear - Clear conversation history
+/stop - Stop current task execution
 /config - Show current configuration
 /model [name] - Show or set model
 /api [url] - Show or set API base URL
@@ -455,13 +456,25 @@ Create .athena/commands/*.md files to define custom slash commands
             console.print("[green]Conversation history cleared[/green]")
             return True
 
+        elif cmd == "/stop":
+            if self.agent:
+                self.agent.request_stop()
+                console.print("[yellow]⏸  Stop requested - will halt after current operation[/yellow]")
+            else:
+                console.print("[yellow]No active task to stop[/yellow]")
+            return True
+
         elif cmd == "/config":
+            timeout_min = getattr(self.config.agent, 'timeout_seconds', 1800) / 60
+            max_retries = getattr(self.config.agent, 'max_retries', 3)
             console.print(
                 Panel(
                     f"[cyan]Model:[/cyan] {self.config.llm.model}\n"
                     f"[cyan]API Base:[/cyan] {self.config.llm.api_base}\n"
                     f"[cyan]Temperature:[/cyan] {self.config.llm.temperature}\n"
-                    f"[cyan]Max Iterations:[/cyan] {self.config.agent.max_iterations}\n"
+                    f"[cyan]Execution:[/cyan] Goal-based (no iteration limit)\n"
+                    f"[cyan]Timeout:[/cyan] {int(timeout_min)} minutes\n"
+                    f"[cyan]Max Retries:[/cyan] {max_retries} per operation\n"
                     f"[cyan]Thinking Enabled:[/cyan] {self.config.agent.enable_thinking}\n"
                     f"[cyan]Streaming:[/cyan] {self.config.agent.streaming}\n"
                     f"[cyan]Fallback Mode:[/cyan] {self.config.agent.fallback_mode}\n"

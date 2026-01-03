@@ -21,7 +21,23 @@ class LLMConfig(BaseModel):
 class AgentConfig(BaseModel):
     """Agent configuration."""
 
-    max_iterations: int = Field(default=50, description="Max agent iterations")
+    # Goal-based execution (no iteration limit)
+    timeout_seconds: Optional[int] = Field(
+        default=1800, description="Task timeout in seconds (default: 30 minutes, None = no timeout)"
+    )
+    max_retries: int = Field(
+        default=3, description="Max retries for same tool+params combination"
+    )
+    failure_limit: int = Field(
+        default=5, description="Max consecutive failures before stopping"
+    )
+    warn_after_operations: int = Field(
+        default=50, description="Show warning after this many operations"
+    )
+
+    # Legacy: max_iterations kept for backwards compatibility but not used
+    max_iterations: int = Field(default=50, description="[DEPRECATED] Not used in goal-based execution")
+
     enable_thinking: bool = Field(default=True, description="Enable thinking tag injection")
     thinking_budget: int = Field(
         default=32000, description="Max tokens for thinking content"

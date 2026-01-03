@@ -1,6 +1,7 @@
 """Base agent with shared functionality."""
 
 import uuid
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 from rich.console import Console
@@ -14,6 +15,7 @@ from athena.tools.base import ToolRegistry
 from athena.queue.sqlite_queue import SQLiteJobQueue
 from athena.context.manager import ContextManager
 from athena.context.compressor import MessageCompressor
+from athena.agent.retry_tracker import RetryTracker
 
 console = Console()
 
@@ -58,6 +60,15 @@ class BaseAgent(ABC):
         # Initialize fallback parser if needed
         self.fallback_parser = FallbackToolParser() if config.agent.fallback_mode else None
 
+        # Retry tracking for loop prevention
+        self.retry_tracker = RetryTracker(
+            max_retries=getattr(config.agent, 'max_retries', 3),
+            failure_limit=getattr(config.agent, 'failure_limit', 5)
+        )
+
+        # Stop control
+        self.stop_requested = False
+
         # Conversation history
         self.messages: list[Message] = []
 
@@ -78,6 +89,10 @@ class BaseAgent(ABC):
             List of tool names, or None for all tools
         """
         pass
+
+    def request_stop(self):
+        """Request the agent to stop after current operation."""
+        self.stop_requested = True
 
     def _get_filtered_tools(self) -> Optional[list[dict]]:
         """Get filtered tools based on allowed_tools.
@@ -139,19 +154,44 @@ class BaseAgent(ABC):
             raise
 
     async def _agent_loop(self) -> str:
-        """Main agent loop with context compression.
+        """Main agent loop with goal-based execution.
+
+        Continues until task is complete (no more tool calls) or timeout/stop requested.
 
         Returns:
             Final response
         """
-        iteration = 0
-        max_iterations = self.config.agent.max_iterations
+        # Initialize tracking
+        start_time = time.time()
+        timeout_seconds = getattr(self.config.agent, 'timeout_seconds', 1800)  # Default 30 min
+        operation_count = 0
+        warn_after = getattr(self.config.agent, 'warn_after_operations', 50)
 
-        while iteration < max_iterations:
-            iteration += 1
+        # Reset retry tracker for new task
+        self.retry_tracker.reset()
+        self.stop_requested = False
 
-            # Show iteration progress
-            console.print(f"\n[dim]→ Iteration {iteration}/{max_iterations}[/dim]")
+        while True:
+            operation_count += 1
+
+            # Check for timeout
+            elapsed = time.time() - start_time
+            if timeout_seconds and elapsed > timeout_seconds:
+                console.print(f"[yellow]⏱️  Task timeout after {int(elapsed/60)} minutes[/yellow]\n")
+                return f"Task timed out after {int(elapsed/60)} minutes. Progress may be incomplete."
+
+            # Check if user requested stop
+            if self.stop_requested:
+                console.print("[yellow]⏸  Task stopped by user[/yellow]\n")
+                return "Task stopped by user request."
+
+            # Show soft warning after many operations
+            if operation_count == warn_after:
+                console.print(f"[yellow]⚠️  Still working after {warn_after} operations. This is taking longer than usual.[/yellow]")
+
+            # Show progress
+            elapsed_str = f"{int(elapsed/60)}m {int(elapsed%60)}s" if elapsed > 60 else f"{int(elapsed)}s"
+            console.print(f"\n[dim]→ Working... ({elapsed_str} elapsed, {operation_count} operations)[/dim]")
 
             # Check if context compression is needed
             if self.context_manager.should_compress(self.messages):
@@ -212,16 +252,15 @@ class BaseAgent(ABC):
 
             # Check if there are tool calls
             if not response.tool_calls:
-                # No more tool calls, return final response
+                # No more tool calls, task is complete!
                 console.print("[dim]✓ Task complete[/dim]\n")
+                stats = self.retry_tracker.get_stats()
+                if stats["total_attempts"] > 0:
+                    console.print(f"[dim]📊 Total operations: {stats['total_attempts']}[/dim]")
                 return response.content
 
-            # Execute tool calls
+            # Execute tool calls with retry tracking
             await self._execute_tool_calls(response.tool_calls)
-
-        # Max iterations reached
-        console.print("[yellow]⚠ Maximum iterations reached[/yellow]\n")
-        return "Maximum iterations reached. Task may be incomplete."
 
     async def _execute_tool_calls(self, tool_calls: list[ToolCall]) -> None:
         """Execute tool calls and add results to messages.
@@ -275,6 +314,23 @@ class BaseAgent(ABC):
             # Sequential execution
             results = []
             for tc in tool_calls:
+                # Check retry limit before executing
+                should_execute, block_reason = self.retry_tracker.check_should_execute(
+                    tc.name, tc.parameters
+                )
+
+                if not should_execute:
+                    # Retry limit exceeded - create error result
+                    from athena.models.tool import ToolResult
+                    result = ToolResult(
+                        success=False,
+                        output="",
+                        error=block_reason
+                    )
+                    results.append(result)
+                    console.print(f"  [red]✗[/red] {tc.name}: {block_reason}")
+                    continue
+
                 # Skip spinner for interactive tools (they need clean console for user input)
                 interactive_tools = {"AskUserQuestion"}
 
@@ -290,6 +346,18 @@ class BaseAgent(ABC):
                     ):
                         result = await self.tool_registry.execute(tc.name, **tc.parameters)
                         results.append(result)
+
+                # Track success/failure for consecutive failure detection
+                if result.success:
+                    self.retry_tracker.record_success(tc.name, tc.parameters)
+                else:
+                    should_continue, stop_reason = self.retry_tracker.record_failure(
+                        tc.name, tc.parameters
+                    )
+                    if not should_continue:
+                        console.print(f"[red]🛑 {stop_reason}[/red]")
+                        # Add the stop reason as an error message
+                        self.stop_requested = True
 
                 # Show result status
                 if result.success:
