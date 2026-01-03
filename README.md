@@ -4,12 +4,15 @@ Open-source AI agent system for autonomous coding assistance, inspired by Claude
 
 ## Features
 
+- **Session persistence** - Automatic conversation history saving with resume support - pick up exactly where you left off
+- **Plan mode** - Read-only exploration mode for designing implementation approaches before writing code
 - **Multi-agent architecture** - Spawn specialized agents for different tasks (Explore, Plan, code-reviewer, test-runner)
-- **Comprehensive tool system** - 28+ tools with auto-discovery, including file operations, Git, web access, Jupyter notebooks, and more
+- **Comprehensive tool system** - 30+ tools with auto-discovery, including file operations, Git, web access, Jupyter notebooks, and more
 - **Tool management** - Enable/disable tools on the fly with `/tool` command, state persists across sessions
 - **Jupyter Notebook support** - Create, read, edit, and execute `.ipynb` files programmatically
 - **Enhanced Git workflow** - Professional git operations with retry logic, safety features, and conventional commits
 - **Mathematical accuracy** - Built-in Math tool for 100% accurate calculations (no LLM errors!)
+- **Goal-based execution** - No iteration limits, continues until task is complete or timeout
 - **Fallback mode** - Works with ANY model, even without function calling support
 - **Thinking tag injection** - Add reasoning capabilities to models that lack native thinking
 - **OpenAI protocol compatible** - Works with LM Studio, ChatGPT, Groq, Ollama, and more
@@ -73,6 +76,111 @@ athena
 You: Read main.py and explain what it does
 You: Create a Python script that processes CSV files
 You: Search for all TODO comments in this project
+```
+
+## Session Persistence
+
+Athena automatically saves your conversations and can resume exactly where you left off.
+
+### How It Works
+- **Automatic saving** - Every message is saved to `athena.db` as you chat
+- **Resume on startup** - When you restart Athena, it detects previous sessions and asks if you want to resume
+- **Conversation summary** - Shows the last few exchanges to remind you of the context
+- **Per-project sessions** - Each working directory gets its own session history
+
+### Example
+```bash
+# First time
+$ athena
+🆕 Started new session: a1b2c3d4...
+You: Can you help me add authentication?
+Athena: I'll help you implement authentication...
+# (work on the task, then exit)
+
+# Come back later (even weeks later!)
+$ athena
+┌─ Session Resume ─────────────────────────┐
+│ Previous session found!                  │
+│                                          │
+│ Last active: 2 days ago                 │
+│ Messages: 42                            │
+│ Session ID: a1b2c3d4...                 │
+│                                          │
+│ Resume this conversation?               │
+└──────────────────────────────────────────┘
+Resume? [Y/n]: y
+
+📂 Resuming session: a1b2c3d4...
+📜 Loaded 42 previous messages
+
+┌─ Last conversation: ──────────────────┐
+You: Can you help me add authentication?
+Athena: (used tools: EnterPlanMode, Read)
+         I'll help you implement authentication...
+└────────────────────────────────────────┘
+
+# Continue right where you left off!
+You: Let's continue with the OAuth implementation
+```
+
+### Session Data
+- Stored in `athena.db` (SQLite database)
+- Includes full conversation history, tool calls, and results
+- Backward compatible - works with existing databases
+- Privacy: stored locally, never leaves your machine
+
+## Plan Mode
+
+Athena can proactively enter "plan mode" to explore your codebase and design an implementation approach before writing code.
+
+### What is Plan Mode?
+- **Read-only mode** - Can only use search, read, and analysis tools (no file modifications)
+- **Design before implementation** - Explore codebase, understand architecture, create plan
+- **User approval** - Present plan to you before making changes
+- **Prevents wasted effort** - Ensures alignment before writing code
+
+### Permission Modes
+Athena has three permission modes:
+
+1. **👤 Normal** (default) - Ask before executing operations
+2. **⚡ Auto-Accept** - Execute operations without asking
+3. **⏸ Plan** - Read-only mode, no file modifications
+
+### How It Works
+```
+You: Add user authentication to the app
+
+# Athena proactively enters plan mode
+Athena: I'll enter plan mode to explore the codebase first
+⏸ Entered Plan Mode
+
+# Athena explores using read-only tools
+Athena: (used tools: Read, Grep, Glob)
+        I've analyzed your codebase. Here's my implementation plan:
+        1. Create auth middleware in src/middleware/auth.js
+        2. Add user model to models/user.js
+        3. Implement JWT token generation
+        ...
+
+# Athena exits plan mode
+👤 Exited Plan Mode
+
+# Now implements the plan
+Athena: (used tools: Write, Edit)
+        I've implemented the authentication system...
+```
+
+### Manual Mode Control
+```bash
+# Enter plan mode manually
+/plan
+
+# Check current mode
+/permission
+
+# Switch modes
+/permission auto-accept
+/permission normal
 ```
 
 ## Configuration
@@ -200,6 +308,10 @@ Many local models don't support OpenAI-style function calling. If you get JSON p
 ### User Interaction
 - **AskUserQuestion** - Ask clarifying questions with multiple-choice options during execution
 
+### Plan Mode (2 tools)
+- **EnterPlanMode** - Enter read-only planning mode to explore codebase and design approach
+- **ExitPlanMode** - Exit plan mode and return to normal mode for implementation
+
 ## Tool Management
 
 Athena features a powerful tool management system that lets you control which tools are available:
@@ -265,8 +377,14 @@ See [TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md) for detailed documentation.
 - `/save` - Save settings to `~/.athena/config.json`
 
 ### Session Management
-- `/clear` - Clear conversation history
+- `/clear` - Clear conversation history (keeps session, just removes messages)
 - `/exit` or `/quit` - Exit Athena
+- `/stop` - Stop current task execution
+
+### Permission Modes
+- `/permission` or `/perm` - Show current permission mode
+- `/permission <mode>` - Switch permission mode (normal, auto-accept, plan)
+- `/plan` - Quick switch to plan mode (read-only)
 
 ### Information
 - `/tools` - List all available tools with enabled/disabled status
@@ -349,6 +467,18 @@ You: Review the code in auth.py for security issues
 ```
 
 ## What Makes Athena Unique
+
+### Session Persistence & Continuity
+- **Pick up where you left off** - full conversation history saved and restored
+- **Smart resumption** - shows summary of last conversation to refresh your memory
+- **Per-project sessions** - different projects maintain separate conversation contexts
+- **Works seamlessly** - backward compatible with existing databases
+
+### Plan Mode for Better Results
+- **Proactive planning** - agent enters read-only mode to explore before implementing
+- **User alignment** - presents plan for approval before making changes
+- **Prevents mistakes** - explores codebase thoroughly before writing code
+- **Permission modes** - flexible control over agent autonomy (normal/auto-accept/plan)
 
 ### Tool Auto-Discovery & Management
 - **Zero-configuration tools** - just drop a Python file in `athena/tools/` and it's available

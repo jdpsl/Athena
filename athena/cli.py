@@ -2,6 +2,7 @@
 
 import asyncio
 import click
+from datetime import datetime
 from pathlib import Path
 from rich.console import Console
 from rich.markdown import Markdown
@@ -9,6 +10,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 
 from athena.models.config import AthenaConfig
+from athena.models.permission import PermissionMode
 from athena.agent.main_agent import MainAgent
 from athena.tools.base import ToolRegistry
 from athena.tools.file_ops import ReadTool, WriteTool, EditTool, InsertTool
@@ -43,12 +45,38 @@ class AthenaSession:
         self.config_manager = PersistentConfigManager()
         self.mcp_manager: MCPClientManager | None = None
         self.skill_loader = None
+        self.session_manager = None
 
-    async def initialize(self) -> None:
-        """Initialize the session."""
+    async def initialize(self, resume_session_id: Optional[str] = None) -> None:
+        """Initialize the session.
+
+        Args:
+            resume_session_id: Optional session ID to resume
+        """
         # Initialize job queue
         self.job_queue = SQLiteJobQueue()
         await self.job_queue.initialize()
+
+        # Initialize session manager (backward compatible)
+        try:
+            from athena.session.manager import SessionManager
+            self.session_manager = SessionManager()
+            await self.session_manager.initialize()
+
+            # Create or resume session
+            if resume_session_id:
+                await self.session_manager.resume_session(resume_session_id)
+                console.print(f"[dim]📂 Resuming session: {resume_session_id[:8]}...[/dim]")
+            else:
+                session_id = await self.session_manager.create_session(
+                    working_directory=self.config.working_directory
+                )
+                console.print(f"[dim]🆕 Started new session: {session_id[:8]}...[/dim]")
+        except Exception as e:
+            # If session management fails, continue without it
+            self.session_manager = None
+            if self.config.debug:
+                console.print(f"[dim yellow]Warning: Session management disabled: {e}[/dim yellow]")
 
         # Load disabled tools from saved config
         saved_settings = self.config_manager.load()
@@ -67,6 +95,15 @@ class AthenaSession:
             )
             self.tool_registry.register(task_tool)
 
+        # Register plan mode tools (need config access)
+        from athena.tools.plan_mode import EnterPlanModeTool, ExitPlanModeTool
+        if "EnterPlanMode" not in disabled_tools:
+            enter_plan_tool = EnterPlanModeTool(config=self.config)
+            self.tool_registry.register(enter_plan_tool)
+        if "ExitPlanMode" not in disabled_tools:
+            exit_plan_tool = ExitPlanModeTool(config=self.config)
+            self.tool_registry.register(exit_plan_tool)
+
         # Initialize MCP clients and register MCP tools
         if self.config.mcp.enabled:
             self.mcp_manager = MCPClientManager(self.config.mcp)
@@ -77,8 +114,8 @@ class AthenaSession:
         self.skill_loader = SkillLoader(working_directory=self.config.working_directory)
         self.skill_loader.discover_skills()
 
-        # Initialize agent
-        self.agent = MainAgent(self.config, self.tool_registry, self.job_queue)
+        # Initialize agent with session manager
+        self.agent = MainAgent(self.config, self.tool_registry, self.job_queue, self.session_manager)
 
         # Pass LLM client to WebFetch for AI-enhanced extraction
         if hasattr(self, '_web_fetch_tool'):
@@ -90,6 +127,75 @@ class AthenaSession:
         # Add system prompt
         self.agent.add_system_message(self._get_system_prompt())
 
+        # Load previous messages if resuming
+        if resume_session_id and self.session_manager:
+            try:
+                messages = await self.session_manager.load_messages(resume_session_id)
+                if messages:
+                    # Set the agent's messages (system prompt is already first)
+                    self.agent.messages.extend(messages)
+                    console.print(f"[dim]📜 Loaded {len(messages)} previous messages[/dim]\n")
+
+                    # Show summary of last conversation
+                    self._show_conversation_summary(messages)
+            except Exception as e:
+                # If loading fails, just start fresh
+                console.print(f"[dim yellow]Could not load previous messages, starting fresh[/dim yellow]")
+                if self.config.debug:
+                    console.print(f"[dim yellow]Error: {e}[/dim yellow]")
+
+    def _show_conversation_summary(self, messages: list) -> None:
+        """Show a summary of the last few conversation exchanges.
+
+        Args:
+            messages: List of messages from the session
+        """
+        from athena.models.message import Role
+
+        # Get last 8 messages (roughly 4 exchanges) - skip system messages
+        recent_messages = [msg for msg in messages if msg.role != Role.SYSTEM][-8:]
+
+        if not recent_messages:
+            return
+
+        console.print(Panel(
+            "[bold]Last conversation:[/bold]",
+            border_style="dim",
+            padding=(0, 1)
+        ))
+
+        for msg in recent_messages:
+            # Format based on role
+            if msg.role == Role.USER:
+                # User message
+                content = msg.content
+                if len(content) > 150:
+                    content = content[:150] + "..."
+                console.print(f"[bold green]You:[/bold green] {content}")
+
+            elif msg.role == Role.ASSISTANT:
+                # Assistant message
+                content = msg.content if msg.content else ""
+
+                # Show tool calls if present
+                if msg.tool_calls:
+                    tool_names = ", ".join(tc.name for tc in msg.tool_calls)
+                    console.print(f"[bold cyan]Athena:[/bold cyan] [dim](used tools: {tool_names})[/dim]")
+                    if content:
+                        if len(content) > 150:
+                            content = content[:150] + "..."
+                        console.print(f"         {content}")
+                else:
+                    if len(content) > 150:
+                        content = content[:150] + "..."
+                    console.print(f"[bold cyan]Athena:[/bold cyan] {content}")
+
+            elif msg.role == Role.TOOL:
+                # Skip tool results - they're just noise in the summary
+                continue
+
+        console.print()  # Empty line after summary
+
     def _register_tools(self, disabled_tools: set[str] = None) -> None:
         """Register all available tools using auto-discovery.
 
@@ -100,7 +206,7 @@ class AthenaSession:
             disabled_tools = set()
 
         # Tools that need special initialization (can't be auto-discovered)
-        special_tools_to_skip = {"Task"}  # Task tool registered separately with job_queue
+        special_tools_to_skip = {"Task", "EnterPlanMode", "ExitPlanMode"}  # Registered separately with dependencies
 
         # Add special tools to disabled list temporarily for auto-discovery
         temp_disabled = disabled_tools | special_tools_to_skip
@@ -186,6 +292,7 @@ You have access to tools for:
 - Agent spawning: Task tool to spawn specialized sub-agents for complex work
 - Web access: WebSearch (internet search), WebFetch (fetch web pages)
 - User interaction: AskUserQuestion (ask clarifying questions)
+- Plan mode: EnterPlanMode (design before implementation), ExitPlanMode (return to normal mode)
 
 File Operations:
 - Read - View file contents (ALWAYS use before Edit, Insert, or Write!)
@@ -280,6 +387,23 @@ User Interaction:
   Examples: Architecture decisions, library choices, implementation approaches
   IMPORTANT: Use this tool frequently in collaborative mode!
 
+Plan Mode - Design before implementation:
+- EnterPlanMode - Enter read-only planning mode to explore and design
+  * Use PROACTIVELY when starting non-trivial implementation tasks
+  * Prevents wasted effort by getting user sign-off on approach first
+  * In plan mode: Can only use read-only tools (Read, Glob, Grep, Git read, Web, Math, TodoWrite)
+  * Use when:
+    - New feature with multiple possible approaches
+    - Architectural decisions needed (libraries, patterns, technologies)
+    - Multi-file changes (3+ files affected)
+    - Unclear requirements need exploration first
+    - User preferences could reasonably differ
+  * DO NOT use for: Simple fixes, typos, obvious bugs, specific detailed instructions
+- ExitPlanMode - Exit plan mode after creating implementation plan
+  * Use after: Exploring codebase, designing approach, creating TodoWrite plan, clarifying with AskUserQuestion
+  * Returns to normal mode where you can write/edit code
+  IMPORTANT: Prefer using EnterPlanMode for non-trivial tasks to ensure alignment!
+
 Task Management:
 - TodoWrite - Track progress on multi-step tasks:
   Use when: Task has 3+ steps, user gives multiple requests, complex planning needed
@@ -309,18 +433,22 @@ Web Tools:
 - IMPORTANT: When using WebSearch, always include a "Sources:" section in your response with links
 
 When working on tasks:
-1. IN COLLABORATIVE MODE: Ask clarifying questions before starting non-trivial work
-2. ALWAYS Read files before editing them (required for Edit/Write tools)
-3. Use TodoWrite proactively for tasks with 3+ steps (helps user see progress)
-4. Use AskUserQuestion with multiple choice when presenting 2-4 implementation options
-5. Explain your approach before making significant changes (multi-file, architectural)
-6. Use Search tools (Glob/Grep) to understand code before making changes
-7. Proactively use Bash for: tests, builds, installs, git add, shell operations
-8. Use specialized Git tools (GitStatus, GitDiff, etc.) for viewing git state
-9. Use Task tool to spawn sub-agents for complex exploration or planning
-10. Use WebSearch and WebFetch when you need docs or encounter unfamiliar tech
-11. Always test your changes by running tests with Bash
-12. Be thorough and careful with code changes
+1. FOR NON-TRIVIAL TASKS: Use EnterPlanMode to explore and design before implementing
+   - Prevents wasted effort by getting user approval on approach first
+   - Switch to read-only mode, explore codebase, create plan with TodoWrite
+   - Use AskUserQuestion to clarify ambiguities, then ExitPlanMode to implement
+2. IN COLLABORATIVE MODE: Ask clarifying questions before starting non-trivial work
+3. ALWAYS Read files before editing them (required for Edit/Write tools)
+4. Use TodoWrite proactively for tasks with 3+ steps (helps user see progress)
+5. Use AskUserQuestion with multiple choice when presenting 2-4 implementation options
+6. Explain your approach before making significant changes (multi-file, architectural)
+7. Use Search tools (Glob/Grep) to understand code before making changes
+8. Proactively use Bash for: tests, builds, installs, git add, shell operations
+9. Use specialized Git tools (GitStatus, GitDiff, etc.) for viewing git state
+10. Use Task tool to spawn sub-agents for complex exploration or planning
+11. Use WebSearch and WebFetch when you need docs or encounter unfamiliar tech
+12. Always test your changes by running tests with Bash
+13. Be thorough and careful with code changes
 
 You are running in a persistent session. The user is working on a coding project."""
 
@@ -339,8 +467,9 @@ You are running in a persistent session. The user is working on a coding project
 
         while True:
             try:
-                # Get user input
-                user_input = Prompt.ask("\n[bold green]You[/bold green]")
+                # Get user input with permission mode indicator
+                current_mode = PermissionMode(self.config.agent.permission_mode)
+                user_input = Prompt.ask(f"\n{current_mode.icon} [bold green]You[/bold green]")
 
                 if not user_input.strip():
                     continue
@@ -414,6 +543,8 @@ You are running in a persistent session. The user is working on a coding project
 /save - Save current settings to ~/.athena/config.json
 /tools - List available tools
 /tool <name> [on|off] - Show tool info or enable/disable a tool
+/permission [mode] - Show or set permission mode (normal/auto-accept/plan)
+/plan - Quick switch to plan mode (read-only)
 /commands - List slash commands
 /skills - List available skills
 /skill <name> [task] - Invoke a skill
@@ -467,18 +598,19 @@ Create .athena/commands/*.md files to define custom slash commands
         elif cmd == "/config":
             timeout_min = getattr(self.config.agent, 'timeout_seconds', 1800) / 60
             max_retries = getattr(self.config.agent, 'max_retries', 3)
+            current_mode = PermissionMode(self.config.agent.permission_mode)
             console.print(
                 Panel(
                     f"[cyan]Model:[/cyan] {self.config.llm.model}\n"
                     f"[cyan]API Base:[/cyan] {self.config.llm.api_base}\n"
                     f"[cyan]Temperature:[/cyan] {self.config.llm.temperature}\n"
+                    f"[cyan]Permission Mode:[/cyan] {current_mode.icon} {current_mode.display_name}\n"
                     f"[cyan]Execution:[/cyan] Goal-based (no iteration limit)\n"
                     f"[cyan]Timeout:[/cyan] {int(timeout_min)} minutes\n"
                     f"[cyan]Max Retries:[/cyan] {max_retries} per operation\n"
                     f"[cyan]Thinking Enabled:[/cyan] {self.config.agent.enable_thinking}\n"
                     f"[cyan]Streaming:[/cyan] {self.config.agent.streaming}\n"
-                    f"[cyan]Fallback Mode:[/cyan] {self.config.agent.fallback_mode}\n"
-                    f"[cyan]Interaction Mode:[/cyan] {self.config.agent.interaction_mode}",
+                    f"[cyan]Fallback Mode:[/cyan] {self.config.agent.fallback_mode}",
                     title="Current Configuration",
                     border_style="cyan",
                 )
@@ -839,6 +971,59 @@ Create .athena/commands/*.md files to define custom slash commands
                     console.print("[dim]Example: /tool WebSearch off[/dim]")
 
                 return True
+
+        elif cmd == "/permission" or cmd == "/perm":
+            parts = command.split(maxsplit=1)
+
+            if len(parts) == 1:
+                # Show current permission mode
+                current_mode = PermissionMode(self.config.agent.permission_mode)
+                console.print(
+                    Panel(
+                        f"[bold]{current_mode.icon} {current_mode.display_name}[/bold]\n\n"
+                        f"[dim]Available modes:[/dim]\n"
+                        f"  👤 normal      - Ask before executing operations\n"
+                        f"  ⚡ auto-accept - Execute operations without asking\n"
+                        f"  ⏸ plan        - Read-only mode (no file modifications)\n\n"
+                        f"[dim]Switch modes: /permission <mode>[/dim]\n"
+                        f"[dim]Quick access: /plan[/dim]",
+                        title=f"Permission Mode",
+                        border_style="cyan",
+                    )
+                )
+            else:
+                # Switch mode
+                new_mode_str = parts[1].lower()
+                try:
+                    if new_mode_str == "auto" or new_mode_str == "auto-accept":
+                        new_mode = PermissionMode.AUTO_ACCEPT
+                    else:
+                        new_mode = PermissionMode(new_mode_str)
+
+                    self.config.agent.permission_mode = new_mode.value
+                    console.print(f"[green]{new_mode.icon} Switched to {new_mode.display_name} mode[/green]")
+
+                    if new_mode == PermissionMode.PLAN:
+                        console.print("[dim]📖 Plan mode: Read-only operations only. No file modifications.[/dim]")
+                        console.print("[dim]Available tools: Read, Glob, Grep, ListDir, Git (read), Web, Math, TodoWrite[/dim]")
+                    elif new_mode == PermissionMode.AUTO_ACCEPT:
+                        console.print("[dim]⚡ Auto-accept mode: Operations execute without confirmation[/dim]")
+                    else:
+                        console.print("[dim]👤 Normal mode: Will ask before executing operations[/dim]")
+
+                except ValueError:
+                    console.print(f"[red]Error:[/red] Invalid mode '{new_mode_str}'")
+                    console.print("[dim]Valid modes: normal, auto-accept, plan[/dim]")
+
+            return True
+
+        elif cmd == "/plan":
+            # Quick shortcut to enter plan mode
+            self.config.agent.permission_mode = PermissionMode.PLAN.value
+            console.print(f"[green]⏸ Switched to Plan mode (read-only)[/green]")
+            console.print("[dim]📖 Available tools: Read, Glob, Grep, ListDir, Git (read), Web, Math, TodoWrite[/dim]")
+            console.print("[dim]Use /permission normal to exit plan mode[/dim]")
+            return True
 
         elif cmd == "/commands":
             commands = self.command_loader.list_commands()
@@ -1344,6 +1529,10 @@ Create .athena/commands/*.md files to define custom slash commands
         if self.mcp_manager:
             await self.mcp_manager.cleanup_all()
 
+        # Close session manager
+        if self.session_manager:
+            await self.session_manager.close()
+
         # Close job queue
         if self.job_queue:
             await self.job_queue.close()
@@ -1386,8 +1575,60 @@ def main(prompt: str | None, config: str | None, model: str | None, api_base: st
 
     # Run session
     async def run():
+        # Check for previous session (with backward compatibility)
+        from athena.session.manager import SessionManager
+        from rich.prompt import Confirm
+
+        resume_session_id = None
+        try:
+            temp_session_manager = SessionManager()
+            await temp_session_manager.initialize()
+
+            if await temp_session_manager.has_previous_session(athena_config.working_directory):
+                latest_session = await temp_session_manager.get_latest_session(athena_config.working_directory)
+                if latest_session:
+                    last_active = latest_session["last_active"]
+                    message_count = latest_session["message_count"]
+                    time_ago = datetime.now() - last_active
+
+                    # Format time ago
+                    if time_ago.days > 0:
+                        time_str = f"{time_ago.days} day{'s' if time_ago.days != 1 else ''} ago"
+                    elif time_ago.seconds > 3600:
+                        hours = time_ago.seconds // 3600
+                        time_str = f"{hours} hour{'s' if hours != 1 else ''} ago"
+                    else:
+                        minutes = time_ago.seconds // 60
+                        time_str = f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+
+                    console.print(
+                        Panel(
+                            f"[bold]Previous session found![/bold]\n\n"
+                            f"[cyan]Last active:[/cyan] {time_str}\n"
+                            f"[cyan]Messages:[/cyan] {message_count}\n"
+                            f"[cyan]Session ID:[/cyan] {latest_session['id'][:8]}...\n\n"
+                            f"Resume this conversation?",
+                            title="Session Resume",
+                            border_style="cyan"
+                        )
+                    )
+
+                    if Confirm.ask("[bold green]Resume?[/bold green]", default=True):
+                        resume_session_id = latest_session["id"]
+                        console.print("[green]✓ Resuming previous session[/green]\n")
+                    else:
+                        console.print("[dim]Starting fresh session[/dim]\n")
+
+            await temp_session_manager.close()
+        except Exception as e:
+            # If session checking fails (e.g., old database), just start fresh
+            if athena_config.debug:
+                console.print(f"[dim yellow]Note: Could not check for previous sessions: {e}[/dim yellow]")
+            console.print("[dim]Starting fresh session[/dim]")
+
+        # Initialize session
         session = AthenaSession(athena_config)
-        await session.initialize()
+        await session.initialize(resume_session_id=resume_session_id)
 
         try:
             if prompt:

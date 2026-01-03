@@ -16,6 +16,7 @@ from athena.queue.sqlite_queue import SQLiteJobQueue
 from athena.context.manager import ContextManager
 from athena.context.compressor import MessageCompressor
 from athena.agent.retry_tracker import RetryTracker
+from athena.models.permission import PermissionMode, get_allowed_tools_for_mode
 
 console = Console()
 
@@ -28,6 +29,7 @@ class BaseAgent(ABC):
         config: AthenaConfig,
         tool_registry: ToolRegistry,
         job_queue: SQLiteJobQueue,
+        session_manager: Optional[Any] = None,
         context_manager: Optional[ContextManager] = None,
     ):
         """Initialize base agent.
@@ -36,11 +38,13 @@ class BaseAgent(ABC):
             config: Athena configuration
             tool_registry: Tool registry
             job_queue: Job queue
+            session_manager: Optional session manager for conversation persistence
             context_manager: Optional context manager (creates default if None)
         """
         self.config = config
         self.tool_registry = tool_registry
         self.job_queue = job_queue
+        self.session_manager = session_manager
         self.agent_id = str(uuid.uuid4())
 
         # Context management
@@ -94,8 +98,25 @@ class BaseAgent(ABC):
         """Request the agent to stop after current operation."""
         self.stop_requested = True
 
+    async def _save_message(self, message: Message) -> None:
+        """Save message to conversation history and database.
+
+        Args:
+            message: Message to save
+        """
+        self.messages.append(message)
+
+        # Save to database if session manager is available
+        if self.session_manager:
+            try:
+                sequence = len(self.messages) - 1
+                await self.session_manager.save_message(message, sequence)
+            except Exception as e:
+                # Don't fail if saving fails, just log
+                console.print(f"[dim yellow]Warning: Failed to save message to database: {e}[/dim yellow]")
+
     def _get_filtered_tools(self) -> Optional[list[dict]]:
-        """Get filtered tools based on allowed_tools.
+        """Get filtered tools based on allowed_tools and permission mode.
 
         Returns:
             List of tool definitions in OpenAI format, or None for all tools
@@ -104,15 +125,23 @@ class BaseAgent(ABC):
         if self.config.agent.fallback_mode:
             return None
 
+        # Get base allowed tools (from agent type)
         allowed = self.get_allowed_tools()
 
-        # None means all tools
-        if allowed is None:
-            return self.tool_registry.to_openai_tools()
+        # Get all tool names
+        all_tool_names = [tool.name for tool in self.tool_registry.list_tools()]
 
-        # Filter to only allowed tools
+        # If no specific allowed list, use all tools
+        if allowed is None:
+            allowed = all_tool_names
+
+        # Apply permission mode filtering
+        permission_mode = PermissionMode(self.config.agent.permission_mode)
+        mode_allowed = get_allowed_tools_for_mode(permission_mode, allowed)
+
+        # Build tool list
         tools = []
-        for tool_name in allowed:
+        for tool_name in mode_allowed:
             tool = self.tool_registry.get(tool_name)
             if tool:
                 tools.append(tool.to_openai_tool_dict())
@@ -130,7 +159,7 @@ class BaseAgent(ABC):
             Final response
         """
         # Add user message
-        self.messages.append(Message(role=Role.USER, content=prompt))
+        await self._save_message(Message(role=Role.USER, content=prompt))
 
         # Create job
         job = Job(
@@ -241,7 +270,7 @@ class BaseAgent(ABC):
                     response.tool_calls = tool_calls
 
             # Add assistant message
-            self.messages.append(response)
+            await self._save_message(response)
 
             # Show thinking if available
             if response.thinking:
@@ -380,7 +409,7 @@ class BaseAgent(ABC):
                 tool_call_id=tool_call.id,
                 name=tool_call.name,
             )
-            self.messages.append(tool_result)
+            await self._save_message(tool_result)
 
     def add_system_message(self, content: str) -> None:
         """Add a system message to the conversation.

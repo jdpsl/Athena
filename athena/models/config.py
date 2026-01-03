@@ -2,6 +2,7 @@
 
 from typing import Optional, Literal
 from pydantic import BaseModel, Field
+from athena.models.permission import PermissionMode
 
 
 class LLMConfig(BaseModel):
@@ -60,9 +61,14 @@ class AgentConfig(BaseModel):
         default=0.75, description="Compress when context reaches this % of max_tokens (0.0-1.0)"
     )
 
-    # Cautious/Collaborative mode settings
+    # Permission mode (like Claude Code)
+    permission_mode: str = Field(
+        default="normal", description="Permission mode: 'normal', 'auto-accept', or 'plan'"
+    )
+
+    # Cautious/Collaborative mode settings (legacy - now use permission_mode)
     interaction_mode: str = Field(
-        default="collaborative", description="Agent interaction style: 'collaborative' or 'autonomous'"
+        default="collaborative", description="[LEGACY] Agent interaction style: 'collaborative' or 'autonomous'"
     )
     ask_before_execution: bool = Field(
         default=True, description="Ask clarifying questions before executing tasks"
