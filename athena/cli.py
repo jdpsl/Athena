@@ -47,6 +47,10 @@ class AthenaSession:
         self.skill_loader = None
         self.session_manager = None
 
+        # Profile manager for configuration profiles
+        from athena.profile_manager import ProfileManager
+        self.profile_manager = ProfileManager()
+
     async def initialize(self, resume_session_id: Optional[str] = None) -> None:
         """Initialize the session.
 
@@ -540,7 +544,8 @@ You are running in a persistent session. The user is working on a coding project
 /streaming [on|off] - Toggle streaming responses (real-time output)
 /compress_size [tokens] - Show or set context size before compression
 /mode [collaborative|autonomous] - Set interaction style (ask before acting vs execute directly)
-/save - Save current settings to ~/.athena/config.json
+/save [name] - Save settings to default config or as named profile
+/load [name] - List all profiles or load a specific profile
 /tools - List available tools
 /tool <name> [on|off] - Show tool info or enable/disable a tool
 /permission [mode] - Show or set permission mode (normal/auto-accept/plan)
@@ -560,9 +565,17 @@ You are running in a persistent session. The user is working on a coding project
 /apikey sk-1234567890abcdef
 /temp 0.5
 /fallback on
-/compress_size 12000
-/mode collaborative
-/save
+/save gpt4-creative    # Save as named profile
+/load                  # List all profiles
+/load gpt4-creative    # Load a profile
+
+[bold]Profiles:[/bold]
+Save different AI configurations and switch between them
+- Configure settings with /model, /api, /temp, etc.
+- Save as profile: /save <name>
+- List profiles: /load
+- Switch profiles: /load <name>
+Storage: ~/.athena/profiles/*.json
 
 [bold]Fallback Mode:[/bold]
 Enable for models without native function calling support
@@ -570,7 +583,7 @@ Uses text format: TOOL[Name]{"param": "value"}
 
 [bold]Persistent Settings:[/bold]
 Settings saved with /save are automatically loaded on startup
-Config location: ~/.athena/config.json
+Config location: ~/.athena/config.json (default) or ~/.athena/profiles/ (named)
 
 [bold]Custom Commands:[/bold]
 Create .athena/commands/*.md files to define custom slash commands
@@ -700,53 +713,124 @@ Create .athena/commands/*.md files to define custom slash commands
             return True
 
         elif cmd == "/save":
-            # Save current settings to ~/.athena/config.json
-            # Convert MCP servers to dict for JSON serialization
-            mcp_servers = [
-                {
-                    "name": s.name,
-                    "transport": s.transport,
-                    "command": s.command,
-                    "args": s.args,
-                    "env": s.env,
-                    "url": s.url,
-                    "enabled": s.enabled,
-                    "timeout": s.timeout,
-                }
-                for s in self.config.mcp.servers
-            ] if self.config.mcp.servers else None
+            # Save current settings as a profile or to default config
+            parts = command.split(maxsplit=1)
+            profile_name = parts[1] if len(parts) > 1 else None
 
-            # Get disabled tools list
-            disabled_tools = list(self.tool_registry.disabled_tools) if self.tool_registry.disabled_tools else None
-
-            settings = self.config_manager.get_current_settings(
-                model=self.config.llm.model,
-                api_base=self.config.llm.api_base,
-                api_key=self.config.llm.api_key,
-                temperature=self.config.llm.temperature,
-                mcp_servers=mcp_servers,
-                context_max_tokens=self.config.agent.context_max_tokens,
-                context_compression_threshold=self.config.agent.context_compression_threshold,
-                interaction_mode=self.config.agent.interaction_mode,
-                ask_before_execution=self.config.agent.ask_before_execution,
-                ask_before_multi_file_changes=self.config.agent.ask_before_multi_file_changes,
-                require_plan_approval=self.config.agent.require_plan_approval,
-                disabled_tools=disabled_tools,
-            )
-            if self.config_manager.save(settings):
-                console.print("[green]✓[/green] Settings saved to ~/.athena/config.json")
-                console.print(f"  [cyan]Model:[/cyan] {settings['model']}")
-                console.print(f"  [cyan]API Base:[/cyan] {settings['api_base']}")
-                console.print(f"  [cyan]API Key:[/cyan] {'Set' if settings['api_key'] else 'Not set'}")
-                console.print(f"  [cyan]Temperature:[/cyan] {settings['temperature']}")
-                console.print(f"  [cyan]Context Size:[/cyan] {settings['context_max_tokens']} tokens (compresses at {int(settings['context_compression_threshold'] * 100)}%)")
-                console.print(f"  [cyan]Interaction Mode:[/cyan] {settings['interaction_mode']}")
-                if mcp_servers:
-                    console.print(f"  [cyan]MCP Servers:[/cyan] {len(mcp_servers)} saved")
-                if disabled_tools:
-                    console.print(f"  [cyan]Disabled Tools:[/cyan] {len(disabled_tools)} disabled")
+            if profile_name:
+                # Save as named profile
+                saved_name = self.profile_manager.save_profile(self.config, profile_name)
+                console.print(f"[green]✓[/green] Profile saved as '{saved_name}'")
+                console.print(f"  [cyan]Model:[/cyan] {self.config.llm.model}")
+                console.print(f"  [cyan]API Base:[/cyan] {self.config.llm.api_base}")
+                console.print(f"  [cyan]Temperature:[/cyan] {self.config.llm.temperature}")
+                console.print(f"  [cyan]Fallback Mode:[/cyan] {self.config.agent.fallback_mode}")
+                console.print(f"  [cyan]Permission Mode:[/cyan] {self.config.agent.permission_mode}")
+                console.print(f"\n[dim]Load this profile with: /load {saved_name}[/dim]")
             else:
-                console.print("[red]Error:[/red] Failed to save settings")
+                # Save to default config (backward compatibility)
+                # Convert MCP servers to dict for JSON serialization
+                mcp_servers = [
+                    {
+                        "name": s.name,
+                        "transport": s.transport,
+                        "command": s.command,
+                        "args": s.args,
+                        "env": s.env,
+                        "url": s.url,
+                        "enabled": s.enabled,
+                        "timeout": s.timeout,
+                    }
+                    for s in self.config.mcp.servers
+                ] if self.config.mcp.servers else None
+
+                # Get disabled tools list
+                disabled_tools = list(self.tool_registry.disabled_tools) if self.tool_registry.disabled_tools else None
+
+                settings = self.config_manager.get_current_settings(
+                    model=self.config.llm.model,
+                    api_base=self.config.llm.api_base,
+                    api_key=self.config.llm.api_key,
+                    temperature=self.config.llm.temperature,
+                    mcp_servers=mcp_servers,
+                    context_max_tokens=self.config.agent.context_max_tokens,
+                    context_compression_threshold=self.config.agent.context_compression_threshold,
+                    interaction_mode=self.config.agent.interaction_mode,
+                    ask_before_execution=self.config.agent.ask_before_execution,
+                    ask_before_multi_file_changes=self.config.agent.ask_before_multi_file_changes,
+                    require_plan_approval=self.config.agent.require_plan_approval,
+                    disabled_tools=disabled_tools,
+                )
+                if self.config_manager.save(settings):
+                    console.print("[green]✓[/green] Settings saved to ~/.athena/config.json")
+                    console.print(f"  [cyan]Model:[/cyan] {settings['model']}")
+                    console.print(f"  [cyan]API Base:[/cyan] {settings['api_base']}")
+                    console.print(f"  [cyan]API Key:[/cyan] {'Set' if settings['api_key'] else 'Not set'}")
+                    console.print(f"  [cyan]Temperature:[/cyan] {settings['temperature']}")
+                    console.print(f"  [cyan]Context Size:[/cyan] {settings['context_max_tokens']} tokens (compresses at {int(settings['context_compression_threshold'] * 100)}%)")
+                    console.print(f"  [cyan]Interaction Mode:[/cyan] {settings['interaction_mode']}")
+                    if mcp_servers:
+                        console.print(f"  [cyan]MCP Servers:[/cyan] {len(mcp_servers)} saved")
+                    if disabled_tools:
+                        console.print(f"  [cyan]Disabled Tools:[/cyan] {len(disabled_tools)} disabled")
+                    console.print(f"\n[dim]Tip: Save as named profile with /save <name>[/dim]")
+                else:
+                    console.print("[red]Error:[/red] Failed to save settings")
+            return True
+
+        elif cmd == "/load":
+            # Load a profile or list all profiles
+            parts = command.split(maxsplit=1)
+
+            if len(parts) == 1:
+                # No profile name - list all profiles
+                profiles = self.profile_manager.list_profiles()
+
+                if not profiles:
+                    console.print("[yellow]No saved profiles found[/yellow]")
+                    console.print("[dim]Create one with: /save <name>[/dim]")
+                else:
+                    console.print(Panel(
+                        "[bold]Saved Profiles:[/bold]",
+                        border_style="cyan"
+                    ))
+
+                    for profile in profiles:
+                        marker = "●" if profile["is_current"] else "○"
+                        current_label = " [dim](current)[/dim]" if profile["is_current"] else ""
+                        console.print(f"  {marker} [cyan]{profile['name']}[/cyan]{current_label}")
+                        console.print(f"    [dim]Model: {profile['model']}[/dim]")
+                        console.print(f"    [dim]API: {profile['api_base']}[/dim]")
+
+                    console.print(f"\n[dim]Load a profile: /load <name>[/dim]")
+            else:
+                # Load specific profile
+                profile_name = parts[1]
+                profile_data = self.profile_manager.load_profile(profile_name)
+
+                if profile_data is None:
+                    console.print(f"[red]Error:[/red] Profile '{profile_name}' not found")
+                    console.print("[dim]Use /load to see available profiles[/dim]")
+                else:
+                    # Apply profile to config
+                    self.profile_manager.apply_profile(self.config, profile_data)
+
+                    # Update LLM client with new settings
+                    from athena.llm.thinking_injector import ThinkingInjector
+                    from athena.llm.client import LLMClient
+                    thinking_injector = ThinkingInjector(
+                        enable_thinking=self.config.agent.enable_thinking,
+                        thinking_budget=self.config.agent.thinking_budget,
+                    )
+                    self.agent.llm_client = LLMClient(self.config.llm, thinking_injector)
+
+                    console.print(f"[green]✓[/green] Loaded profile '{profile_name}'")
+                    console.print(f"  [cyan]Model:[/cyan] {self.config.llm.model}")
+                    console.print(f"  [cyan]API Base:[/cyan] {self.config.llm.api_base}")
+                    console.print(f"  [cyan]Temperature:[/cyan] {self.config.llm.temperature}")
+                    console.print(f"  [cyan]Fallback Mode:[/cyan] {self.config.agent.fallback_mode}")
+                    console.print(f"  [cyan]Permission Mode:[/cyan] {self.config.agent.permission_mode}")
+
             return True
 
         elif cmd == "/compress_size":
