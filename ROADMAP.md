@@ -42,14 +42,18 @@ This document outlines how Athena compares to Claude Code and provides a strateg
 
 #### Agent Types
 
-**Athena**:
+**Athena** (9 agents):
 - Explore
 - Plan
 - code-reviewer
 - test-runner
+- research
+- scientist
+- security-researcher
+- athena-docs (documentation lookup)
 - general-purpose
 
-**Claude Code**:
+**Claude Code** (5-6+ agents):
 - Explore
 - Plan
 - general-purpose
@@ -87,6 +91,11 @@ This document outlines how Athena compares to Claude Code and provides a strateg
    - Can hack on the codebase
    - Add custom tools easily
    - No restrictions
+
+6. **🤖 More Specialized Agents**
+   - 9 built-in agent types vs Claude Code's 5-6
+   - Unique agents: research (library investigation), scientist (data analysis), security-researcher (CVE scanning)
+   - Task-specific expertise for common development workflows
 
 ### Where Claude Code Wins
 
@@ -535,6 +544,57 @@ The key is to focus on high-impact improvements first (MCP, enhanced prompts, se
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2025-12-26
+---
+
+## Research Topics & Future Exploration
+
+These are experimental ideas under consideration. Not scheduled for implementation, but worth exploring further.
+
+### AI-Driven Context Compression (CompressContext Tool)
+
+**Concept:** Give the AI a `CompressContext` tool and let it decide when to compress conversation history, rather than using automatic thresholds.
+
+**How it would work:**
+```python
+class CompressContextTool(Tool):
+    """Let AI compress conversation when appropriate."""
+
+    async def execute(self, keep_recent: int = 5, preserve_tool_types: list[str] = None):
+        """
+        Args:
+            keep_recent: Number of recent exchanges to keep full (default: 5)
+            preserve_tool_types: Tool results to preserve (e.g., ["Read", "Glob"])
+        """
+        # Compress everything except recent messages and specified tools
+```
+
+**Potential benefits:**
+- ✅ Model knows when it's "done" with information
+- ✅ Can compress after completing a sub-task (e.g., after exploring 20 files)
+- ✅ Smarter than heuristics - AI decides what to preserve
+- ✅ Could improve inference speed (fewer tokens = faster responses)
+- ✅ Optional/explicit - doesn't change current behavior
+
+**Challenges:**
+- ⚠️ Tool call dependency chains (Glob → Read → Edit needs the file list)
+- ⚠️ Model might forget to compress or over-compress
+- ⚠️ Need strong system prompt guidance on when to use
+- ⚠️ Extra tool call overhead
+- ⚠️ Quality degradation if compression is too aggressive
+
+**Use cases:**
+- Long exploratory sessions (read 50 files, compress after decision made)
+- After installing dependencies (compress bash output)
+- After completing a distinct sub-task
+- Before switching contexts/topics
+
+**Status:** Under consideration. Performance benefits need validation. Tool call dependencies are a key concern.
+
+**Date added:** 2026-01-07
+
+---
+
+**Document Version:** 1.2
+**Last Updated:** 2026-01-07
+**Changes:** Added 3 new specialized agents (research, scientist, security-researcher)
 **Author:** Claude Code Analysis

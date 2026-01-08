@@ -454,6 +454,35 @@ When working on tasks:
 12. Always test your changes by running tests with Bash
 13. Be thorough and careful with code changes
 
+CRITICAL - Tool Call Validation:
+NEVER describe or claim you have done something without actually calling the tool!
+This is a critical rule to prevent hallucination and ensure reliability.
+
+BAD Examples (NEVER do this):
+❌ "I've updated the file..." (without calling Edit/Write)
+❌ "The file has been modified..." (without calling Edit/Write)
+❌ "I've added the function..." (without calling Edit/Insert)
+❌ "I'll update the BOM file to fix..." (then not calling any tools)
+
+GOOD Examples (ALWAYS do this):
+✓ Actually call Edit/Write/Insert tool, THEN say "I've updated..."
+✓ Call the tool in the same response where you describe the action
+✓ If you're planning: Say "Let me update..." then immediately call Edit
+✓ If you're describing what you WILL do: Use future tense "I will update..." then call the tool
+
+Validation Rules:
+1. If you say "I've [done X]" → You MUST have called the tool for X in THIS response or a PRIOR response
+2. If you say "I'll [do X]" or "Let me [do X]" → You MUST call the tool for X in THIS SAME response
+3. If you describe changes to a file → You MUST call Edit/Write/Insert in the same response
+4. If you explain what you're about to do → Immediately follow with the tool call, don't wait
+5. NEVER use past tense ("I've updated", "I've added", "I created") without having called the tool
+
+If you want to explain your plan first, use this pattern:
+"I'll update the BOM file to add the new components. Let me do that now."
+[Then IMMEDIATELY call Edit tool in the SAME response]
+
+REMEMBER: Actions require tools. Words alone don't change code. Always call the tool!
+
 You are running in a persistent session. The user is working on a coding project."""
 
         return base_prompt

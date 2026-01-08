@@ -6,7 +6,7 @@ Open-source AI agent system for autonomous coding assistance, inspired by Claude
 
 - **Session persistence** - Automatic conversation history saving with resume support - pick up exactly where you left off
 - **Plan mode** - Read-only exploration mode for designing implementation approaches before writing code
-- **Multi-agent architecture** - Spawn specialized agents for different tasks (Explore, Plan, code-reviewer, test-runner)
+- **Multi-agent architecture** - Spawn specialized agents for different tasks (Explore, Plan, code-reviewer, test-runner, research, scientist, security-researcher)
 - **Comprehensive tool system** - 30+ tools with auto-discovery, including file operations, Git, web access, Jupyter notebooks, and more
 - **Tool management** - Enable/disable tools on the fly with `/tool` command, state persists across sessions
 - **Jupyter Notebook support** - Create, read, edit, and execute `.ipynb` files programmatically
@@ -290,6 +290,9 @@ Many local models don't support OpenAI-style function calling. If you get JSON p
   - `Plan` - Break down complex tasks
   - `code-reviewer` - Review code quality
   - `test-runner` - Run and analyze tests
+  - `research` - Investigate libraries, frameworks, and best practices
+  - `scientist` - Data analysis, experimentation, and scientific research
+  - `security-researcher` - Vulnerability detection and CVE research
   - `general-purpose` - Handle complex multi-step work
 
 ### Mathematics

@@ -115,6 +115,57 @@ class BaseAgent(ABC):
                 # Don't fail if saving fails, just log
                 console.print(f"[dim yellow]Warning: Failed to save message to database: {e}[/dim yellow]")
 
+    def _detect_hallucination(self, response: Message) -> bool:
+        """Detect if response claims actions without calling tools.
+
+        Args:
+            response: Assistant response to check
+
+        Returns:
+            True if hallucination detected, False otherwise
+        """
+        if not response.content or response.tool_calls:
+            # If there are tool calls or no content, not hallucinating
+            return False
+
+        content_lower = response.content.lower()
+
+        # Patterns that indicate the assistant claims to have modified files
+        action_claims = [
+            "i've updated",
+            "i've modified",
+            "i've edited",
+            "i've changed",
+            "i've added",
+            "i've created",
+            "i've written",
+            "i've inserted",
+            "i've fixed",
+            "the file has been updated",
+            "the file has been modified",
+            "the file has been changed",
+            "file updated",
+            "file modified",
+            "changes made",
+            "i updated the",
+            "i modified the",
+            "i edited the",
+            "i added the",
+            "i created the",
+        ]
+
+        # Check if response claims file operations
+        for claim in action_claims:
+            if claim in content_lower:
+                # Check if this is about files
+                file_indicators = [".py", ".js", ".ts", ".md", ".txt", ".json",
+                                  ".yaml", ".yml", "file", "code", "function",
+                                  "class", "bom", "readme", "config"]
+                if any(indicator in content_lower for indicator in file_indicators):
+                    return True
+
+        return False
+
     def _get_filtered_tools(self) -> Optional[list[dict]]:
         """Get filtered tools based on allowed_tools and permission mode.
 
@@ -268,6 +319,27 @@ class BaseAgent(ABC):
                 response.content = cleaned_content
                 if tool_calls:
                     response.tool_calls = tool_calls
+
+            # Detect hallucination (claiming actions without calling tools)
+            if self._detect_hallucination(response):
+                console.print("\n[bold red]⚠️  WARNING: Hallucination Detected[/bold red]")
+                console.print("[yellow]The assistant claimed to have modified files but didn't call any tools.[/yellow]")
+                console.print("[yellow]Prompting assistant to actually perform the actions...[/yellow]\n")
+
+                # Add the response to history (so it has context)
+                await self._save_message(response)
+
+                # Add a correction message forcing the assistant to use tools
+                correction_msg = Message(
+                    role=Role.USER,
+                    content="You described what you would do, but you didn't actually call the tools to do it. "
+                            "Please ACTUALLY perform the actions by calling the appropriate tools (Edit, Write, Insert, etc.) "
+                            "in your next response. Don't just describe - execute!"
+                )
+                await self._save_message(correction_msg)
+
+                # Continue the loop to get actual tool calls
+                continue
 
             # Add assistant message
             await self._save_message(response)
