@@ -106,10 +106,11 @@ class TemplateLoader:
 
         # Map template type to directory path
         # e.g., "python-web" -> python/web/structure.yaml
+        # e.g., "python-discord-bot" -> python/discord-bot/structure.yaml
         parts = template_type.split("-")
         if len(parts) >= 2:
             language = parts[0]
-            project_type = parts[1]
+            project_type = "-".join(parts[1:])  # Join all remaining parts
             structure_file = base_dir / language / project_type / "structure.yaml"
             if structure_file.exists():
                 return structure_file

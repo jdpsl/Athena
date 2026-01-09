@@ -128,7 +128,7 @@ This tool uses templates to ensure consistent, high-quality project setup."""
             if not template:
                 return ToolResult(
                     success=False,
-                    error=f"Template not found for type: {project_type}"
+                    output=f"❌ Template not found for type: {project_type}"
                 )
 
             # Prepare variables for template substitution
@@ -148,7 +148,7 @@ This tool uses templates to ensure consistent, high-quality project setup."""
             if project_path.exists():
                 return ToolResult(
                     success=False,
-                    error=f"Directory already exists: {project_name}"
+                    output=f"❌ Directory already exists: {project_name}"
                 )
 
             project_path.mkdir(parents=True)
@@ -253,5 +253,5 @@ This tool uses templates to ensure consistent, high-quality project setup."""
         except Exception as e:
             return ToolResult(
                 success=False,
-                error=f"Failed to initialize project: {str(e)}"
+                output=f"❌ Failed to initialize project: {str(e)}"
             )
