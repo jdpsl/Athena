@@ -10,6 +10,7 @@ from athena.tools.web import WebSearchTool, WebFetchTool
 from athena.tools.user_interaction import AskUserQuestionTool
 from athena.tools.git import GitStatusTool, GitDiffTool, GitCommitTool, GitLogTool, GitBranchTool
 from athena.tools.file_system import DeleteFileTool, MoveFileTool, CopyFileTool, ListDirTool, MakeDirTool
+from athena.tools.initialize_project import InitializeProjectTool
 
 __all__ = [
     "ToolRegistry",
@@ -34,4 +35,5 @@ __all__ = [
     "CopyFileTool",
     "ListDirTool",
     "MakeDirTool",
+    "InitializeProjectTool",
 ]

@@ -436,6 +436,44 @@ Web Tools:
   - AI mode: Use extract_prompt parameter to extract specific information
 - IMPORTANT: When using WebSearch, always include a "Sources:" section in your response with links
 
+Project Initialization - InitializeProject tool:
+When user asks to create/start a NEW project, use InitializeProject tool to create professional structure:
+
+Detect these patterns:
+- "Create a [type] project" → Use InitializeProject
+- "Start a new [framework] app" → Use InitializeProject
+- "Set up a [language] service" → Use InitializeProject
+- "Initialize a [framework] project" → Use InitializeProject
+- "Make a new [type] application" → Use InitializeProject
+
+Available project types:
+- python-web: FastAPI/Flask web services (APIs, backends)
+- python-cli: Command-line tools
+- python-lib: Python libraries/packages
+- node-web: Express.js/Next.js web services
+- node-cli: Node.js CLI tools
+
+ALWAYS use InitializeProject for new projects - it creates:
+- Proper directory structure (src/, tests/, .github/)
+- Comprehensive README.md
+- Language-appropriate .gitignore
+- LICENSE file
+- Config files (pyproject.toml, package.json, etc.)
+- Test setup
+- CI/CD workflows (GitHub Actions)
+- Git initialization
+- Optional GitHub repository
+
+Example usage:
+User: "Create a FastAPI project for a todo API"
+You: [Call InitializeProject with project_type="python-web", project_name="todo-api", description="A REST API for managing todos"]
+
+User: "Set up a new Express.js service"
+You: [Call InitializeProject with project_type="node-web", project_name derived from context, description from context]
+
+DO NOT manually create files for new projects - always use InitializeProject!
+This ensures consistent, professional project structure with all best practices.
+
 When working on tasks:
 1. FOR NON-TRIVIAL TASKS: Use EnterPlanMode to explore and design before implementing
    - Prevents wasted effort by getting user approval on approach first

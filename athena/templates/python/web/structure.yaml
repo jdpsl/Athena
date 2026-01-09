@@ -1,0 +1,74 @@
+name: "Python Web API"
+type: "python-web"
+description: "FastAPI web service with modern Python best practices"
+
+directories:
+  - "src/{{project_name_snake}}"
+  - "src/{{project_name_snake}}/routers"
+  - "src/{{project_name_snake}}/models"
+  - "tests"
+  - ".github/workflows"
+
+files:
+  - path: "README.md"
+    template: "python/web/README.md"
+
+  - path: "pyproject.toml"
+    template: "python/web/pyproject.toml"
+
+  - path: ".gitignore"
+    template: "python/.gitignore"
+
+  - path: "LICENSE"
+    template: "base/LICENSE.{{license}}"
+
+  - path: "src/{{project_name_snake}}/__init__.py"
+    content: '"""{{project_name}} - {{description}}"""
+
+__version__ = "0.1.0"
+'
+
+  - path: "src/{{project_name_snake}}/main.py"
+    template: "python/web/main.py"
+
+  - path: "src/{{project_name_snake}}/config.py"
+    template: "python/web/config.py"
+
+  - path: "src/{{project_name_snake}}/routers/__init__.py"
+    content: ""
+
+  - path: "src/{{project_name_snake}}/models/__init__.py"
+    content: ""
+
+  - path: "tests/__init__.py"
+    content: ""
+
+  - path: "tests/test_main.py"
+    template: "python/web/test_main.py"
+
+  - path: ".env.example"
+    template: "python/web/.env.example"
+
+  - path: ".github/workflows/test.yml"
+    template: "python/web/test-workflow.yml"
+
+dependencies:
+  main:
+    - "fastapi>=0.104.0"
+    - "uvicorn[standard]>=0.24.0"
+    - "pydantic>=2.0.0"
+    - "pydantic-settings>=2.0.0"
+  dev:
+    - "pytest>=7.4.0"
+    - "pytest-asyncio>=0.21.0"
+    - "httpx>=0.25.0"
+    - "ruff>=0.1.0"
+    - "black>=23.0.0"
+
+next_steps:
+  - "cd {{project_name}}"
+  - "python -m venv venv"
+  - "source venv/bin/activate  # On Windows: venv\\Scripts\\activate"
+  - "pip install -e \".[dev]\""
+  - "uvicorn {{project_name_snake}}.main:app --reload"
+  - "# API docs at: http://localhost:8000/docs"

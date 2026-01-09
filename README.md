@@ -4,6 +4,7 @@ Open-source AI agent system for autonomous coding assistance, inspired by Claude
 
 ## Features
 
+- **🚀 Professional Project Initialization** - Create complete, production-ready projects in seconds with proper structure, documentation, testing, and CI/CD
 - **Session persistence** - Automatic conversation history saving with resume support - pick up exactly where you left off
 - **Plan mode** - Read-only exploration mode for designing implementation approaches before writing code
 - **Multi-agent architecture** - Spawn specialized agents for different tasks (Explore, Plan, code-reviewer, test-runner, research, scientist, security-researcher)
@@ -77,6 +78,111 @@ You: Read main.py and explain what it does
 You: Create a Python script that processes CSV files
 You: Search for all TODO comments in this project
 ```
+
+## 🚀 Professional Project Initialization
+
+Athena can create complete, production-ready projects with a single command - **surpassing Claude Code's capabilities** with customizable templates and research-powered best practices.
+
+### Quick Example
+
+```
+You: Create a FastAPI project for a todo API
+
+Athena: ✅ Project initialized: todo-api
+        📁 Type: Python Web API
+
+        📦 Created structure:
+          ✓ src/todo_api/ (application code)
+          ✓ tests/ (pytest tests)
+          ✓ .github/workflows/ (CI/CD)
+
+        📝 Generated files:
+          ✓ README.md (comprehensive)
+          ✓ pyproject.toml
+          ✓ .gitignore
+          ✓ LICENSE (MIT)
+          ✓ src/todo_api/main.py
+          ✓ src/todo_api/config.py
+          ... and 8 more files
+
+        🔧 Git repository initialized
+
+        🚀 Next steps:
+          1. cd todo-api
+          2. python -m venv venv
+          3. pip install -e ".[dev]"
+          4. uvicorn todo_api.main:app --reload
+```
+
+### What Gets Created
+
+Every new project includes:
+
+- **📁 Proper structure** - src/, tests/, docs/, .github/workflows/
+- **📝 Comprehensive README** - Installation, usage, development, contributing sections
+- **⚙️ Configuration files** - pyproject.toml, package.json, tsconfig.json, etc.
+- **🧪 Test setup** - pytest, jest, vitest with sample tests
+- **🔧 Development tools** - Linters (ruff, eslint), formatters (black, prettier)
+- **🚦 CI/CD** - GitHub Actions workflows for automated testing
+- **📜 LICENSE** - MIT, Apache-2.0, GPL, or BSD (your choice)
+- **🔒 .gitignore** - Comprehensive, language-appropriate
+- **📦 Git init** - Repository initialized with initial commit
+- **🌐 GitHub integration** - Optional repo creation with `gh` CLI
+
+### Available Project Types
+
+```bash
+# Python Projects
+python-web     # FastAPI/Flask web services (APIs, backends)
+python-cli     # Command-line tools
+python-lib     # Python libraries/packages
+
+# Node.js Projects
+node-web       # Express.js/Next.js web services
+node-cli       # Node.js CLI tools
+
+# More templates coming soon!
+# Community templates can be added to ~/.athena/templates/
+```
+
+### vs. Claude Code
+
+| Feature | Claude Code | Athena |
+|---------|-------------|--------|
+| Proactive detection | ✅ | ✅ |
+| Professional structure | ✅ | ✅ |
+| README generation | ✅ Good | ✅ Excellent |
+| Test setup | ✅ | ✅ |
+| CI/CD workflows | ✅ | ✅ |
+| **Template system** | ❌ Hidden | ✅ **Visible & editable** |
+| **Custom templates** | ❌ Closed | ✅ **Open - add your own!** |
+| **Research capability** | ⚠️ Built-in knowledge | ✅ **WebSearch for latest practices** |
+| **Company templates** | ❌ N/A | ✅ **Perfect for teams** |
+| **Community templates** | ❌ N/A | ✅ **Ecosystem potential** |
+
+**Athena's advantage:** Templates are in `athena/templates/` - you can see, modify, and create your own!
+
+### Custom Templates
+
+Create company-specific or personal templates:
+
+```bash
+# Add your template
+mkdir -p ~/.athena/templates/company/microservice/
+# Create structure.yaml and template files
+
+# Use it
+You: Create a microservice using our company template
+Athena: (uses ~/.athena/templates/company/microservice/)
+```
+
+Templates can include:
+- Company logging standards
+- Internal authentication patterns
+- Deployment configurations
+- Custom tooling setup
+
+See [PROJECT_INITIALIZATION.md](PROJECT_INITIALIZATION.md) for template creation guide.
 
 ## Session Persistence
 
