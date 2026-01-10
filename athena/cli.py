@@ -710,6 +710,7 @@ You are running in a persistent session. The user is working on a coding project
 /fallback [on|off] - Toggle text-based tool calling fallback
 /thinking [on|off] - Toggle thinking tag injection (extended reasoning)
 /streaming [on|off] - Toggle streaming responses (real-time output)
+/hallucination [on|off] - Toggle AI hallucination detection (experimental, off by default)
 /compress_size [tokens] - Show or set context size before compression
 /mode [collaborative|autonomous] - Set interaction style (ask before acting vs execute directly)
 /save [name] - Save settings to default config or as named profile
@@ -1152,6 +1153,29 @@ Create .athena/commands/*.md files to define custom slash commands
                 status = "[green]enabled[/green]" if self.config.agent.streaming else "[red]disabled[/red]"
                 console.print(f"[cyan]Streaming responses:[/cyan] {status}")
                 console.print("\n[dim]Streaming shows responses as they are generated in real-time for better responsiveness.[/dim]")
+            return True
+
+        elif cmd == "/hallucination":
+            parts = command.split(maxsplit=1)
+            if len(parts) > 1:
+                # Set hallucination detection mode
+                value = parts[1].lower()
+                if value in ['on', 'true', '1', 'yes']:
+                    self.config.agent.hallucination_detection = True
+                    console.print("[green]✓[/green] Hallucination detection [bold]enabled[/bold]")
+                    console.print("  [dim]AI will verify responses match actual tool usage (experimental)[/dim]")
+                elif value in ['off', 'false', '0', 'no']:
+                    self.config.agent.hallucination_detection = False
+                    console.print("[green]✓[/green] Hallucination detection [bold]disabled[/bold]")
+                    console.print("  [dim]No verification of claims vs actions[/dim]")
+                else:
+                    console.print("[red]Error:[/red] Use 'on' or 'off'")
+            else:
+                # Show current state
+                status = "[green]enabled[/green]" if self.config.agent.hallucination_detection else "[red]disabled[/red]"
+                console.print(f"[cyan]Hallucination detection:[/cyan] {status}")
+                console.print("\n[dim]Hallucination detection uses AI to verify the assistant actually performs claimed actions.[/dim]")
+                console.print("[dim]This is experimental and may have false positives. Disabled by default.[/dim]")
             return True
 
         elif cmd == "/tools":

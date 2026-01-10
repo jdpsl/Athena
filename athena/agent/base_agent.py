@@ -327,7 +327,10 @@ class BaseAgent(ABC):
                     response.tool_calls = tool_calls
 
             # Detect hallucination (claiming actions without calling tools) using AI agent
-            is_hallucination, reason = await self._detect_hallucination(response, last_tool_calls)
+            is_hallucination = False
+            reason = ""
+            if self.config.agent.hallucination_detection:
+                is_hallucination, reason = await self._detect_hallucination(response, last_tool_calls)
 
             if is_hallucination:
                 console.print("\n[bold red]🚨 HALLUCINATION DETECTED[/bold red]")

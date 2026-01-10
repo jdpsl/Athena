@@ -361,6 +361,31 @@ class BaseAgent:
 
 ## Configuration
 
+### Enable/Disable Detection
+
+**Hallucination detection is DISABLED by default** (as of v0.1.0) as it's still experimental.
+
+To enable it, use the `/hallucination` slash command:
+
+```bash
+# Enable detection
+/hallucination on
+
+# Disable detection
+/hallucination off
+
+# Check current status
+/hallucination
+```
+
+You can also enable it in your config file:
+
+```yaml
+# config.yaml
+agent:
+  hallucination_detection: true  # Default: false
+```
+
 ### Model Selection
 
 The hallucination detector uses the same model configured in your `config.yaml` or environment variables. To change the model:
@@ -374,14 +399,6 @@ llm:
 ```
 
 The detector will automatically use this configuration.
-
-### Disable Detection (Not Recommended)
-
-```python
-# Skip detection entirely
-async def _detect_hallucination(self, response, last_tool_calls):
-    return False, "Detection disabled"
-```
 
 ## Statistics Dashboard
 

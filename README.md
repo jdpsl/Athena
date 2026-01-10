@@ -483,6 +483,7 @@ See [TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md) for detailed documentation.
 - `/apikey [key]` - Show or set API key (masked when showing)
 - `/temp [0.0-1.0]` - Show or set temperature
 - `/fallback [on|off]` - Toggle text-based tool calling
+- `/hallucination [on|off]` - Toggle AI hallucination detection (experimental, off by default)
 - `/save` - Save settings to `~/.athena/config.json`
 
 ### Session Management

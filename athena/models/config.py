@@ -52,6 +52,9 @@ class AgentConfig(BaseModel):
     streaming: bool = Field(
         default=False, description="Enable streaming responses (show output as generated)"
     )
+    hallucination_detection: bool = Field(
+        default=False, description="Enable AI-powered hallucination detection (experimental)"
+    )
 
     # Context compression settings
     context_max_tokens: int = Field(
