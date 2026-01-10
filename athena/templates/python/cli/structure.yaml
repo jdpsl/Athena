@@ -1,0 +1,62 @@
+name: "Python CLI Tool"
+type: "python-cli"
+description: "Modern Python CLI application with Click and best practices"
+
+directories:
+  - "src/{{project_name_snake}}"
+  - "src/{{project_name_snake}}/commands"
+  - "tests"
+  - ".github/workflows"
+
+files:
+  - path: "README.md"
+    template: "python/cli/README.md"
+
+  - path: "pyproject.toml"
+    template: "python/cli/pyproject.toml"
+
+  - path: ".gitignore"
+    template: "python/.gitignore"
+
+  - path: "LICENSE"
+    template: "base/LICENSE.{{license}}"
+
+  - path: "src/{{project_name_snake}}/__init__.py"
+    content: '"""{{project_name}} - {{description}}"""
+
+__version__ = "0.1.0"
+'
+
+  - path: "src/{{project_name_snake}}/cli.py"
+    template: "python/cli/cli.py"
+
+  - path: "src/{{project_name_snake}}/commands/__init__.py"
+    content: ""
+
+  - path: "src/{{project_name_snake}}/commands/hello.py"
+    template: "python/cli/hello.py"
+
+  - path: "tests/__init__.py"
+    content: ""
+
+  - path: "tests/test_cli.py"
+    template: "python/cli/test_cli.py"
+
+  - path: ".github/workflows/test.yml"
+    template: "python/cli/test-workflow.yml"
+
+dependencies:
+  main:
+    - "click>=8.1.0"
+  dev:
+    - "pytest>=7.4.0"
+    - "ruff>=0.1.0"
+    - "black>=23.0.0"
+
+next_steps:
+  - "cd {{project_name}}"
+  - "python -m venv venv"
+  - "source venv/bin/activate  # On Windows: venv\\Scripts\\activate"
+  - "pip install -e \".[dev]\""
+  - "{{project_name_snake}} --help"
+  - "{{project_name_snake}} hello --name World"
