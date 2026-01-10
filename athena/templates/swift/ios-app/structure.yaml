@@ -1,0 +1,64 @@
+name: "iOS App (SwiftUI)"
+type: "swift-ios-app"
+description: "Modern iOS app with Swift 6, SwiftUI, and best practices for 2026"
+
+directories:
+  - "{{project_name}}"
+  - "{{project_name}}/App"
+  - "{{project_name}}/Views"
+  - "{{project_name}}/ViewModels"
+  - "{{project_name}}/Models"
+  - "{{project_name}}/Services"
+  - "{{project_name}}/Resources"
+  - "{{project_name}}/Resources/Assets.xcassets"
+  - "{{project_name}}Tests"
+  - "{{project_name}}UITests"
+
+files:
+  - path: "README.md"
+    template: "README.md"
+
+  - path: "{{project_name}}/App/{{project_name}}App.swift"
+    template: "App.swift"
+
+  - path: "{{project_name}}/Views/ContentView.swift"
+    template: "ContentView.swift"
+
+  - path: "{{project_name}}/ViewModels/ContentViewModel.swift"
+    template: "ContentViewModel.swift"
+
+  - path: "{{project_name}}/Models/AppModel.swift"
+    template: "AppModel.swift"
+
+  - path: "{{project_name}}/Services/DataService.swift"
+    template: "DataService.swift"
+
+  - path: "{{project_name}}/Resources/Info.plist"
+    template: "Info.plist"
+
+  - path: "{{project_name}}Tests/{{project_name}}Tests.swift"
+    template: "Tests.swift"
+
+  - path: ".gitignore"
+    template: "swift/.gitignore"
+
+  - path: "LICENSE"
+    template: "base/LICENSE.{{license}}"
+
+dependencies:
+  swift_packages:
+    - "SwiftUI (built-in)"
+    - "SwiftData (built-in)"
+    - "Foundation Models (iOS 26+)"
+
+  minimum_versions:
+    - "iOS 16.0+ (recommended: iOS 26.0+)"
+    - "Xcode 17.0+"
+    - "Swift 6.0+"
+
+next_steps:
+  - "cd {{project_name}}"
+  - "open {{project_name}}.xcodeproj"
+  - "# Configure signing & capabilities in Xcode"
+  - "# Build and run: Cmd+R"
+  - "# Note: iOS 26 SDK required for App Store submissions after April 2026"

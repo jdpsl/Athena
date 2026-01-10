@@ -1,0 +1,63 @@
+name: "Apple Watch App (SwiftUI)"
+type: "swift-watch-app"
+description: "Modern watchOS app with SwiftUI and Watch Connectivity for 2026"
+
+directories:
+  - "{{project_name}} Watch App"
+  - "{{project_name}} Watch App/Views"
+  - "{{project_name}} Watch App/ViewModels"
+  - "{{project_name}} Watch App/Models"
+  - "{{project_name}} Watch App/Services"
+  - "{{project_name}} Watch App/Resources"
+  - "{{project_name}} Watch App Tests"
+
+files:
+  - path: "README.md"
+    template: "README.md"
+
+  - path: "{{project_name}} Watch App/{{project_name}}App.swift"
+    template: "WatchApp.swift"
+
+  - path: "{{project_name}} Watch App/Views/ContentView.swift"
+    template: "ContentView.swift"
+
+  - path: "{{project_name}} Watch App/Views/DetailView.swift"
+    template: "DetailView.swift"
+
+  - path: "{{project_name}} Watch App/ViewModels/ContentViewModel.swift"
+    template: "ContentViewModel.swift"
+
+  - path: "{{project_name}} Watch App/Models/WatchModel.swift"
+    template: "WatchModel.swift"
+
+  - path: "{{project_name}} Watch App/Services/ConnectivityService.swift"
+    template: "ConnectivityService.swift"
+
+  - path: "{{project_name}} Watch App Tests/{{project_name}}Tests.swift"
+    template: "Tests.swift"
+
+  - path: ".gitignore"
+    template: "swift/.gitignore"
+
+  - path: "LICENSE"
+    template: "base/LICENSE.{{license}}"
+
+dependencies:
+  frameworks:
+    - "SwiftUI (built-in)"
+    - "WatchConnectivity (built-in)"
+    - "HealthKit (optional)"
+    - "WorkoutKit (optional)"
+
+  minimum_versions:
+    - "watchOS 9.0+ (recommended: watchOS 10.0+)"
+    - "Xcode 17.0+"
+    - "Swift 6.0+"
+
+next_steps:
+  - "cd {{project_name}}"
+  - "open {{project_name}}.xcodeproj"
+  - "# Select Watch target"
+  - "# Build and run: Cmd+R"
+  - "# Test on Apple Watch simulator or device"
+  - "# Note: Keep UI simple and interactions minimal for Watch"

@@ -1,0 +1,93 @@
+name: "Android App (Jetpack Compose)"
+type: "kotlin-android-app"
+description: "Modern Android app with Kotlin, Jetpack Compose, and Material 3 for 2026"
+
+directories:
+  - "app"
+  - "app/src"
+  - "app/src/main"
+  - "app/src/main/java/com/{{project_name_snake}}"
+  - "app/src/main/java/com/{{project_name_snake}}/ui"
+  - "app/src/main/java/com/{{project_name_snake}}/ui/theme"
+  - "app/src/main/java/com/{{project_name_snake}}/viewmodel"
+  - "app/src/main/java/com/{{project_name_snake}}/model"
+  - "app/src/main/java/com/{{project_name_snake}}/data"
+  - "app/src/main/res"
+  - "app/src/main/res/values"
+  - "app/src/main/res/drawable"
+  - "app/src/test/java/com/{{project_name_snake}}"
+  - "app/src/androidTest/java/com/{{project_name_snake}}"
+
+files:
+  - path: "README.md"
+    template: "README.md"
+
+  - path: "app/build.gradle.kts"
+    template: "build.gradle.kts"
+
+  - path: "app/src/main/AndroidManifest.xml"
+    template: "AndroidManifest.xml"
+
+  - path: "app/src/main/java/com/{{project_name_snake}}/MainActivity.kt"
+    template: "MainActivity.kt"
+
+  - path: "app/src/main/java/com/{{project_name_snake}}/ui/MainScreen.kt"
+    template: "MainScreen.kt"
+
+  - path: "app/src/main/java/com/{{project_name_snake}}/ui/theme/Theme.kt"
+    template: "Theme.kt"
+
+  - path: "app/src/main/java/com/{{project_name_snake}}/ui/theme/Color.kt"
+    template: "Color.kt"
+
+  - path: "app/src/main/java/com/{{project_name_snake}}/viewmodel/MainViewModel.kt"
+    template: "MainViewModel.kt"
+
+  - path: "app/src/main/java/com/{{project_name_snake}}/model/AppModel.kt"
+    template: "AppModel.kt"
+
+  - path: "app/src/main/res/values/strings.xml"
+    template: "strings.xml"
+
+  - path: "app/src/test/java/com/{{project_name_snake}}/ExampleUnitTest.kt"
+    template: "ExampleUnitTest.kt"
+
+  - path: "settings.gradle.kts"
+    template: "settings.gradle.kts"
+
+  - path: ".gitignore"
+    template: "kotlin/.gitignore"
+
+  - path: "LICENSE"
+    template: "base/LICENSE.{{license}}"
+
+dependencies:
+  core:
+    - "androidx.core:core-ktx:1.12.0"
+    - "androidx.lifecycle:lifecycle-runtime-ktx:2.7.0"
+    - "androidx.activity:activity-compose:1.8.2"
+
+  compose:
+    - "androidx.compose.ui:ui"
+    - "androidx.compose.ui:ui-tooling-preview"
+    - "androidx.compose.material3:material3"
+    - "androidx.compose.material3:material3-adaptive"
+
+  testing:
+    - "junit:junit:4.13.2"
+    - "androidx.test.ext:junit:1.1.5"
+    - "androidx.compose.ui:ui-test-junit4"
+
+  minimum_versions:
+    - "Android SDK: 24 (Android 7.0)"
+    - "Target SDK: 34 (Android 14)"
+    - "Kotlin: 2.0+"
+    - "Gradle: 8.5+"
+
+next_steps:
+  - "cd {{project_name}}"
+  - "# Open in Android Studio"
+  - "# File → Open → Select project folder"
+  - "# Sync Gradle: File → Sync Project with Gradle Files"
+  - "# Run: Shift+F10 or click Run button"
+  - "# Select emulator or connected device"
