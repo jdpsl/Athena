@@ -368,84 +368,45 @@ Each memory can have:
 - Search for family info: `/memory search family`
 - Filter by confidence: Show only high-confidence memories in prompt
 
-## Open Questions & Design Decisions
+## Design Decisions (Process)
 
-### 1. Should Athena mention when using memories?
+### 1. Memory Visibility - ✅ DECIDED: Silent/Natural (Option A)
 
-**Option A: Silent (Natural)**
+**Decision**: Athena uses memories naturally without announcing them.
+
+**Example:**
 ```
 User: "Build a simple game"
 Athena: "How about a math puzzle game for Emma and Lucas?"
 ```
-(User might wonder: How did Athena know about Emma and Lucas?)
 
-**Option B: Transparent (Explicit)**
-```
-User: "Build a simple game"
-Athena: "I remember you have kids Emma (7) and Lucas (5).
-How about a math puzzle game for their age group?"
-```
-(Clear Athena is using memory, but might feel robotic)
+**Rationale**: More natural conversation flow, less robotic. Users expect AI to remember context without constantly saying "I remember...". If using debug mode, could show `[Memory: mem_001, mem_005 used]`.
 
-**Option C: Subtle (Tagged)**
-```
-User: "Build a simple game"
-Athena: "How about a math puzzle game for Emma and Lucas? 📝"
-```
-(Small indicator that memory was used, unobtrusive)
+### 2. Implicit Memory Detection - 🔮 FUTURE (Phase 3)
 
-**Option D: Debug Mode**
-```
-Normal: Silent
-With /debug on: Shows "[Memory: mem_001, mem_005 used]"
-```
-
-### 2. Implicit memory - how aggressive should detection be?
-
-**Conservative:**
-- Require 5+ instances of same pattern
-- Always ask for confirmation
-- High confidence threshold (0.9+)
+Will be decided during Phase 3 implementation. Likely approach:
 
 **Moderate:**
-- Detect after 3 instances
-- Ask for confirmation
+- Detect after 3 instances of same pattern
+- Always ask user for confirmation
 - Medium confidence (0.7+)
 
-**Aggressive:**
-- Detect after 2 instances
-- Auto-save with low confidence
-- Let user delete if wrong
+Not a blocker for Phase 1.
 
-### 3. Memory staleness & updates
+### 3. Memory Staleness - ✅ DECIDED: Ask for Update (Option D)
 
-**Scenario**: User preferred React 6 months ago, now uses Svelte
+**Decision**: When Athena detects outdated preferences, ask the user.
 
-**Option A: Overwrite**
-- New memory replaces old
-- Single source of truth
-- Lose history
-
-**Option B: Timestamp Priority**
-- Keep all, use most recent
-- Historical record maintained
-- Can see evolution
-
-**Option C: Confidence Decay**
-```json
-{
-  "content": "Prefers React",
-  "created_at": "2025-07-01",
-  "confidence": 0.5,  // Decayed from 1.0 over 6 months
-  "superseded_by": "mem_156"
-}
-```
-
-**Option D: Ask for Update**
+**Example:**
 ```
 Athena: "I remember you preferred React, but I notice you're using
 Svelte now. Should I update this preference?"
+
+User: "Yes" → Update memory
+User: "No" → Keep both (maybe context-dependent)
 ```
+
+**Rationale**: User maintains control, no auto-updates that might be wrong. Some preferences might be context-dependent (React for web, Svelte for small projects).
 
 ### 4. Privacy & Control
 
@@ -732,28 +693,43 @@ How do we know this is working?
 
 ---
 
-## Feedback Needed
+## Design Decisions - FINALIZED
 
-Please review and provide thoughts on:
-
-1. **Agent-aware approach** - Does the `inject_for` field make sense? Is filtering by agent type the right approach?
-2. **Memory structure** - Does the JSON format with agent awareness work?
-3. **Auto-detection of inject_for** - Should coding prefs go to all agents? Personal only to planning/research?
-4. **Implicit learning** - Detection after 3 instances? Too aggressive/conservative?
-5. **Memory visibility** - Should Athena mention when using memories?
-6. **Staleness handling** - How to deal with outdated preferences?
-7. **Slash commands** - Are the proposed commands intuitive?
-8. **Phase 1 scope** - Is "manual memory + agent-aware injection" a good start?
-9. **User override** - Should users be able to manually set `inject_for` per memory?
-10. **Any missing use cases** - What else should be remembered?
-
-## Key Design Decisions Made
-
+### Core Architecture
 ✅ **Agent-aware memory injection** - Different agents see different memories
 ✅ **No RAG/retrieval** - Simple filtering by agent type, no semantic search
 ✅ **System prompt injection** - All relevant memories injected into system prompt
 ✅ **Token efficient** - Coding agents ~150 tokens, planning agents ~250 tokens
-✅ **Personal context for planning only** - Helps with relevant suggestions
+
+### Memory Assignment
+✅ **Auto-detection of inject_for**:
+- Coding preferences → `["coding", "planning", "research"]` (all agents)
+- Personal context → `["planning", "research"]` (NOT coding)
+- Communication style → `["coding", "planning", "research"]` (all agents)
+
+### User Experience
+✅ **Memory visibility: SILENT/NATURAL**
+- Athena uses memories without mentioning them
+- No "I remember you have kids..." announcements
+- Just naturally incorporates context
+- More conversational and less robotic
+
+✅ **Staleness handling: ASK USER**
+- When Athena detects outdated preferences (e.g., used React before, now using Svelte)
+- Ask: "I remember you preferred React, but I see you're using Svelte now. Should I update this?"
+- User confirms → Update memory
+- Don't auto-update without permission
+
+✅ **Slash commands** - `/remember`, `/memory list/show/delete/search`
+
+✅ **Phase 1 scope** - Manual memory + agent-aware injection
+
+✅ **User override** - Can manually set `inject_for` if needed (`/memory edit mem_001 --inject coding,planning`)
+
+## Remaining Questions (Minor)
+
+- **Implicit learning threshold** - Detect after 3 instances? (Phase 3 - decide later)
+- **Any missing use cases** - Open to discovering more as we use it
 
 ---
 
