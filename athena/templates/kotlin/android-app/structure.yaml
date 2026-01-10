@@ -40,6 +40,9 @@ files:
   - path: "app/src/main/java/com/{{project_name_snake}}/ui/theme/Color.kt"
     template: "Color.kt"
 
+  - path: "app/src/main/java/com/{{project_name_snake}}/ui/theme/Type.kt"
+    template: "Type.kt"
+
   - path: "app/src/main/java/com/{{project_name_snake}}/viewmodel/MainViewModel.kt"
     template: "MainViewModel.kt"
 

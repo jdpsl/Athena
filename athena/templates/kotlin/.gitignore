@@ -1,0 +1,82 @@
+# Gradle files
+.gradle/
+build/
+gradle-app.setting
+!gradle-wrapper.jar
+!gradle-wrapper.properties
+.gradletasknamecache
+
+# Android Studio files
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/**/usage.statistics.xml
+.idea/**/dictionaries
+.idea/**/shelf
+.idea/caches
+.idea/libraries
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+.idea_modules/
+*.swp
+
+# Local configuration
+local.properties
+.DS_Store
+
+# Android build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+output.json
+
+# Generated files
+bin/
+gen/
+out/
+captures/
+.externalNativeBuild
+.cxx/
+
+# Keystore files (IMPORTANT: Never commit!)
+*.jks
+*.keystore
+release.properties
+
+# Signing files
+signing/
+keystore.properties
+
+# Log files
+*.log
+
+# Native libraries
+*.so
+
+# IntelliJ
+*.iml
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/gradle.xml
+.idea/assetWizardSettings.xml
+.idea/dictionaries
+.idea/libraries
+.idea/jarRepositories.xml
+*.iws
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Misc
+*.hprof
