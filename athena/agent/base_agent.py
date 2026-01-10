@@ -16,6 +16,7 @@ from athena.queue.sqlite_queue import SQLiteJobQueue
 from athena.context.manager import ContextManager
 from athena.context.compressor import MessageCompressor
 from athena.agent.retry_tracker import RetryTracker
+from athena.agent.hallucination_detector import HallucinationDetector, HallucinationStats
 from athena.models.permission import PermissionMode, get_allowed_tools_for_mode
 
 console = Console()
@@ -70,6 +71,10 @@ class BaseAgent(ABC):
             failure_limit=getattr(config.agent, 'failure_limit', 5)
         )
 
+        # Hallucination detection (AI-powered)
+        self.hallucination_detector = HallucinationDetector(config)
+        self.hallucination_stats = HallucinationStats()
+
         # Stop control
         self.stop_requested = False
 
@@ -115,56 +120,56 @@ class BaseAgent(ABC):
                 # Don't fail if saving fails, just log
                 console.print(f"[dim yellow]Warning: Failed to save message to database: {e}[/dim yellow]")
 
-    def _detect_hallucination(self, response: Message) -> bool:
-        """Detect if response claims actions without calling tools.
+    async def _detect_hallucination(
+        self,
+        response: Message,
+        last_tool_calls: Optional[list[ToolCall]] = None
+    ) -> tuple[bool, str]:
+        """Detect if response claims actions without calling tools using AI agent.
 
         Args:
             response: Assistant response to check
+            last_tool_calls: Tools that were called in the last iteration
 
         Returns:
-            True if hallucination detected, False otherwise
+            Tuple of (is_hallucination, reason)
         """
-        if not response.content or response.tool_calls:
-            # If there are tool calls or no content, not hallucinating
-            return False
+        if not response.content:
+            # No content to check
+            return False, "No content"
 
-        content_lower = response.content.lower()
+        if response.tool_calls:
+            # If there are tool calls in THIS response, not hallucinating
+            return False, "Has tool calls"
 
-        # Patterns that indicate the assistant claims to have modified files
-        action_claims = [
-            "i've updated",
-            "i've modified",
-            "i've edited",
-            "i've changed",
-            "i've added",
-            "i've created",
-            "i've written",
-            "i've inserted",
-            "i've fixed",
-            "the file has been updated",
-            "the file has been modified",
-            "the file has been changed",
-            "file updated",
-            "file modified",
-            "changes made",
-            "i updated the",
-            "i modified the",
-            "i edited the",
-            "i added the",
-            "i created the",
-        ]
+        # Get list of tools that were called in last iteration
+        tools_called = []
+        tool_details = []
 
-        # Check if response claims file operations
-        for claim in action_claims:
-            if claim in content_lower:
-                # Check if this is about files
-                file_indicators = [".py", ".js", ".ts", ".md", ".txt", ".json",
-                                  ".yaml", ".yml", "file", "code", "function",
-                                  "class", "bom", "readme", "config"]
-                if any(indicator in content_lower for indicator in file_indicators):
-                    return True
+        if last_tool_calls:
+            tools_called = [tc.name for tc in last_tool_calls]
+            tool_details = [
+                {"name": tc.name, "parameters": tc.parameters}
+                for tc in last_tool_calls
+            ]
 
-        return False
+        # Use AI agent to detect hallucination
+        try:
+            is_hallucination, reason = await self.hallucination_detector.detect(
+                assistant_response=response.content,
+                tools_called=tools_called,
+                tool_details=tool_details
+            )
+
+            # Record check
+            self.hallucination_stats.record_check(is_hallucination, response.content, reason)
+
+            return is_hallucination, reason
+
+        except Exception as e:
+            # If detection fails, fall back to no detection (conservative)
+            console.print(f"[dim yellow]Warning: Hallucination detection failed: {e}[/dim yellow]")
+            return False, f"Detection error: {str(e)}"
 
     def _get_filtered_tools(self) -> Optional[list[dict]]:
         """Get filtered tools based on allowed_tools and permission mode.
@@ -246,6 +251,7 @@ class BaseAgent(ABC):
         timeout_seconds = getattr(self.config.agent, 'timeout_seconds', 1800)  # Default 30 min
         operation_count = 0
         warn_after = getattr(self.config.agent, 'warn_after_operations', 50)
+        last_tool_calls = None  # Track last tool calls for hallucination detection
 
         # Reset retry tracker for new task
         self.retry_tracker.reset()
@@ -320,11 +326,16 @@ class BaseAgent(ABC):
                 if tool_calls:
                     response.tool_calls = tool_calls
 
-            # Detect hallucination (claiming actions without calling tools)
-            if self._detect_hallucination(response):
-                console.print("\n[bold red]⚠️  WARNING: Hallucination Detected[/bold red]")
-                console.print("[yellow]The assistant claimed to have modified files but didn't call any tools.[/yellow]")
-                console.print("[yellow]Prompting assistant to actually perform the actions...[/yellow]\n")
+            # Detect hallucination (claiming actions without calling tools) using AI agent
+            is_hallucination, reason = await self._detect_hallucination(response, last_tool_calls)
+
+            if is_hallucination:
+                console.print("\n[bold red]🚨 HALLUCINATION DETECTED[/bold red]")
+                console.print(f"[yellow]Reason: {reason}[/yellow]")
+                console.print("[yellow]Forcing assistant to actually perform the actions...[/yellow]\n")
+
+                # Record that we prevented it
+                self.hallucination_stats.record_prevented()
 
                 # Add the response to history (so it has context)
                 await self._save_message(response)
@@ -332,9 +343,11 @@ class BaseAgent(ABC):
                 # Add a correction message forcing the assistant to use tools
                 correction_msg = Message(
                     role=Role.USER,
-                    content="You described what you would do, but you didn't actually call the tools to do it. "
-                            "Please ACTUALLY perform the actions by calling the appropriate tools (Edit, Write, Insert, etc.) "
-                            "in your next response. Don't just describe - execute!"
+                    content=f"❌ HALLUCINATION DETECTED: {reason}\n\n"
+                            "You described what you would do, but you didn't actually call the tools to do it. "
+                            "Please ACTUALLY perform the actions by calling the appropriate tools (Edit, Write, Insert, Bash, etc.) "
+                            "in your next response. Don't just describe - EXECUTE!\n\n"
+                            "Remember: Words don't change code. Tools do."
                 )
                 await self._save_message(correction_msg)
 
@@ -358,7 +371,16 @@ class BaseAgent(ABC):
                 stats = self.retry_tracker.get_stats()
                 if stats["total_attempts"] > 0:
                     console.print(f"[dim]📊 Total operations: {stats['total_attempts']}[/dim]")
+
+                # Show hallucination stats if any were detected
+                if self.hallucination_stats.hallucinations_detected > 0:
+                    h_stats = self.hallucination_stats.get_stats()
+                    console.print(f"[dim]🚨 Hallucinations prevented: {h_stats['hallucinations_prevented']}[/dim]")
+
                 return response.content
+
+            # Save tool calls for next iteration's hallucination detection
+            last_tool_calls = response.tool_calls
 
             # Execute tool calls with retry tracking
             await self._execute_tool_calls(response.tool_calls)
