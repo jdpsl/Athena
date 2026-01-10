@@ -87,9 +87,11 @@ Be strict but fair. The goal is to catch cases where the assistant LIES about do
         self.config = config
 
         # Use fast, cheap model for detection (Haiku is perfect for this)
-        detection_config = config.llm.copy()
-        if config.llm.model_provider == "anthropic":
-            detection_config.model_name = "claude-haiku-4"  # Fast and cheap
+        detection_config = config.llm.model_copy()
+
+        # If using Anthropic API (check by api_base URL), use Haiku for speed/cost
+        if "anthropic" in detection_config.api_base.lower():
+            detection_config.model = "claude-haiku-4"  # Fast and cheap
 
         self.llm_client = LLMClient(detection_config)
 
