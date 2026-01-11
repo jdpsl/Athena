@@ -32,6 +32,7 @@ class BaseAgent(ABC):
         job_queue: SQLiteJobQueue,
         session_manager: Optional[Any] = None,
         context_manager: Optional[ContextManager] = None,
+        memory_manager: Optional[Any] = None,
     ):
         """Initialize base agent.
 
@@ -41,11 +42,13 @@ class BaseAgent(ABC):
             job_queue: Job queue
             session_manager: Optional session manager for conversation persistence
             context_manager: Optional context manager (creates default if None)
+            memory_manager: Optional memory manager for user preferences
         """
         self.config = config
         self.tool_registry = tool_registry
         self.job_queue = job_queue
         self.session_manager = session_manager
+        self.memory_manager = memory_manager
         self.agent_id = str(uuid.uuid4())
 
         # Context management
@@ -524,6 +527,73 @@ class BaseAgent(ABC):
         else:
             # Append to existing system message
             self.messages[0].content += f"\n\n{content}"
+
+    def inject_memories(self) -> None:
+        """Inject user memories into the system prompt based on agent type.
+
+        This should be called after add_system_message() to append memories
+        to the system prompt naturally.
+        """
+        if not self.memory_manager:
+            return
+
+        # Get agent type (e.g., "main", "planning", "research")
+        agent_type = self.get_agent_type_name()
+
+        # Map agent type names to memory inject_for categories
+        # "main" agent acts as "coding" agent for memory purposes
+        memory_type_map = {
+            "main": "coding",
+            "coding": "coding",
+            "planning": "planning",
+            "plan": "planning",
+            "research": "research",
+            "explore": "research",
+        }
+
+        memory_type = memory_type_map.get(agent_type, "coding")
+
+        # Get memories for this agent type
+        memories = self.memory_manager.get_memories_for_agent(memory_type)
+
+        if not memories:
+            return
+
+        # Format memories into system prompt section
+        memory_section = "\n\n# User Preferences and Context\n\n"
+        memory_section += "The following information has been learned about the user from previous interactions:\n\n"
+
+        # Group memories by type for better organization
+        by_type = {}
+        for mem in memories:
+            mem_type = mem.get("type", "other")
+            if mem_type not in by_type:
+                by_type[mem_type] = []
+            by_type[mem_type].append(mem)
+
+        # Format each type
+        type_headers = {
+            "environment": "System Environment:",
+            "coding_preference": "Coding Preferences:",
+            "avoid_pattern": "Patterns to Avoid:",
+            "personal": "Personal Context:",
+            "communication": "Communication Style:",
+            "project_pattern": "Project Patterns:",
+        }
+
+        for mem_type, mems in by_type.items():
+            header = type_headers.get(mem_type, f"{mem_type.replace('_', ' ').title()}:")
+            memory_section += f"## {header}\n"
+            for mem in mems:
+                memory_section += f"- {mem['content']}\n"
+            memory_section += "\n"
+
+        # Append to system message
+        if self.messages and self.messages[0].role == Role.SYSTEM:
+            self.messages[0].content += memory_section
+        else:
+            # No system message yet, create one
+            self.messages.insert(0, Message(role=Role.SYSTEM, content=memory_section))
 
     def get_conversation_history(self) -> list[Message]:
         """Get the conversation history.

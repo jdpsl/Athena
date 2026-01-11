@@ -584,6 +584,29 @@ You: Review the code in auth.py for security issues
 - **Per-project sessions** - different projects maintain separate conversation contexts
 - **Works seamlessly** - backward compatible with existing databases
 
+### Long-Term Memory System
+- **Remembers your preferences** across all sessions and projects
+- **Agent-aware injection** - different agents see different memories (coding vs planning vs research)
+- **Auto-detection** - automatically categorizes memories by type (coding, personal, environment, communication)
+- **System environment** - remembers tool availability ("use python3 not python"), package managers, permissions
+- **Natural usage** - memories silently incorporated without announcements
+- **Easy management** - `/remember`, `/memory list`, `/memory search` commands
+
+```bash
+# Remember system constraints
+/remember Use python3 instead of python - python is not available
+/remember Don't use pip3 without venv - it can break system packages
+
+# Remember preferences
+/remember I prefer Python with type hints and pytest for testing
+/remember Keep responses concise without emoji
+
+# View and manage memories
+/memory list environment
+/memory search python
+/memory stats
+```
+
 ### Plan Mode for Better Results
 - **Proactive planning** - agent enters read-only mode to explore before implementing
 - **User alignment** - presents plan for approval before making changes

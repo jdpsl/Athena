@@ -23,6 +23,7 @@ from athena.hooks.manager import HookManager
 from athena.commands.loader import CommandLoader
 from athena.config_manager import PersistentConfigManager
 from athena.mcp.manager import MCPClientManager
+from athena.memory.manager import MemoryManager
 
 
 console = Console()
@@ -51,6 +52,9 @@ class AthenaSession:
         # Profile manager for configuration profiles
         from athena.profile_manager import ProfileManager
         self.profile_manager = ProfileManager()
+
+        # Memory manager for user preferences
+        self.memory_manager = MemoryManager()
 
     async def initialize(self, resume_session_id: Optional[str] = None) -> None:
         """Initialize the session.
@@ -109,6 +113,18 @@ class AthenaSession:
             exit_plan_tool = ExitPlanModeTool(config=self.config)
             self.tool_registry.register(exit_plan_tool)
 
+        # Register memory search tool (needs memory manager)
+        from athena.tools.memory import MemorySearchTool
+        if "MemorySearch" not in disabled_tools:
+            memory_search_tool = MemorySearchTool(memory_manager=self.memory_manager)
+            self.tool_registry.register(memory_search_tool)
+
+        # Register memory create tool (needs memory manager)
+        from athena.tools.memory_create import MemoryCreateTool
+        if "MemoryCreate" not in disabled_tools:
+            memory_create_tool = MemoryCreateTool(memory_manager=self.memory_manager)
+            self.tool_registry.register(memory_create_tool)
+
         # Initialize MCP clients and register MCP tools
         if self.config.mcp.enabled:
             self.mcp_manager = MCPClientManager(self.config.mcp)
@@ -119,8 +135,14 @@ class AthenaSession:
         self.skill_loader = SkillLoader(working_directory=self.config.working_directory)
         self.skill_loader.discover_skills()
 
-        # Initialize agent with session manager
-        self.agent = MainAgent(self.config, self.tool_registry, self.job_queue, self.session_manager)
+        # Initialize agent with session manager and memory manager
+        self.agent = MainAgent(
+            self.config,
+            self.tool_registry,
+            self.job_queue,
+            self.session_manager,
+            memory_manager=self.memory_manager
+        )
 
         # Pass LLM client to WebFetch for AI-enhanced extraction
         if hasattr(self, '_web_fetch_tool'):
@@ -131,6 +153,9 @@ class AthenaSession:
 
         # Add system prompt
         self.agent.add_system_message(self._get_system_prompt())
+
+        # Inject user memories into system prompt
+        self.agent.inject_memories()
 
         # Load previous messages if resuming
         if resume_session_id and self.session_manager:
@@ -718,6 +743,8 @@ You are running in a persistent session. The user is working on a coding project
 /load [name] - List all profiles or load a specific profile
 /tools - List available tools
 /tool <name> [on|off] - Show tool info or enable/disable a tool
+/remember <text> - Remember a preference or fact
+/memory - Memory system commands (list, show, delete, search, stats)
 /permission [mode] - Show or set permission mode (normal/auto-accept/plan)
 /plan - Quick switch to plan mode (read-only)
 /commands - List slash commands
@@ -1177,6 +1204,199 @@ Create .athena/commands/*.md files to define custom slash commands
                 console.print(f"[cyan]Hallucination detection:[/cyan] {status}")
                 console.print("\n[dim]Hallucination detection uses AI to verify the assistant actually performs claimed actions.[/dim]")
                 console.print("[dim]This is experimental and may have false positives. Disabled by default.[/dim]")
+            return True
+
+        elif cmd == "/remember":
+            # Add a memory
+            if len(command.split(maxsplit=1)) < 2:
+                console.print("[red]Error:[/red] Usage: /remember <text>")
+                console.print("[dim]Example: /remember I prefer TypeScript over JavaScript[/dim]")
+                return True
+
+            memory_text = command.split(maxsplit=1)[1]
+            memory = self.memory_manager.add_memory(memory_text, source="manual")
+
+            console.print(f"[green]✓[/green] Remembered: {memory['content']}")
+            console.print(f"[dim]  → Type: {memory['type']}[/dim]")
+            console.print(f"[dim]  → Agents: {', '.join(memory['inject_for'])}[/dim]")
+            console.print(f"[dim]  → ID: {memory['id']}[/dim]")
+            return True
+
+        elif cmd == "/memory":
+            parts = command.split()
+
+            if len(parts) == 1:
+                # Show help
+                console.print(Panel(
+                    """[bold]Memory Commands:[/bold]
+/memory list                  - List all memories
+/memory list coding           - List coding memories
+/memory list personal         - List personal memories
+/memory list environment      - List system/environment memories
+/memory show <id>             - Show specific memory
+/memory delete <id>           - Delete a memory
+/memory search <query>        - Search memories
+/memory stats                 - Show memory statistics
+/memory check-stale [months]  - Find memories older than N months (default 6)
+
+[bold]Examples:[/bold]
+/memory list
+/memory list environment
+/memory search python3
+/memory delete mem_042
+/memory check-stale
+/memory check-stale 12
+
+[bold]Memory Types:[/bold]
+- environment: System commands, package managers, tool availability
+- coding_preference: Language, framework, testing preferences
+- personal: Family, interests, background (for planning agents)
+- communication: Response style preferences
+- project_pattern: Project-specific patterns
+
+[bold]Agent Memory Creation:[/bold]
+The agent can detect preference statements and ask to remember them:
+  You: "Always use python3 instead of python"
+  Agent: "Should I remember this for future sessions?"
+  You: "Yes"
+  Agent: Creates the memory automatically""",
+                    title="Memory System",
+                    border_style="cyan"
+                ))
+                return True
+
+            subcmd = parts[1]
+
+            if subcmd == "list":
+                # List memories
+                filter_type = parts[2] if len(parts) > 2 else None
+                memories = self.memory_manager.list_memories(filter_type)
+
+                if not memories:
+                    console.print("[yellow]No memories found[/yellow]")
+                    return True
+
+                # Group by type
+                by_type = {}
+                for m in memories:
+                    mem_type = m.get('type', 'unknown')
+                    if mem_type not in by_type:
+                        by_type[mem_type] = []
+                    by_type[mem_type].append(m)
+
+                for mem_type, mems in by_type.items():
+                    console.print(f"\n[bold cyan]{mem_type.replace('_', ' ').title()}:[/bold cyan]")
+                    for m in mems:
+                        agents = ', '.join(m.get('inject_for', []))
+                        console.print(f"  [green]{m['id']}[/green]: {m['content'][:80]}...")
+                        console.print(f"       [dim]→ Agents: {agents}[/dim]")
+
+                console.print(f"\n[dim]Total: {len(memories)} memories[/dim]")
+
+            elif subcmd == "show":
+                if len(parts) < 3:
+                    console.print("[red]Error:[/red] Usage: /memory show <id>")
+                    return True
+
+                mem_id = parts[2]
+                memory = self.memory_manager.get_memory(mem_id)
+
+                if not memory:
+                    console.print(f"[red]Error:[/red] Memory {mem_id} not found")
+                    return True
+
+                console.print(Panel(
+                    f"""[bold]ID:[/bold] {memory['id']}
+[bold]Type:[/bold] {memory['type']}
+[bold]Content:[/bold] {memory['content']}
+[bold]Source:[/bold] {memory['source']}
+[bold]Agents:[/bold] {', '.join(memory['inject_for'])}
+[bold]Tags:[/bold] {', '.join(memory.get('tags', []))}
+[bold]Created:[/bold] {memory['created_at']}
+[bold]Confidence:[/bold] {memory.get('confidence', 1.0)}""",
+                    title=f"Memory: {mem_id}",
+                    border_style="cyan"
+                ))
+
+            elif subcmd == "delete":
+                if len(parts) < 3:
+                    console.print("[red]Error:[/red] Usage: /memory delete <id>")
+                    return True
+
+                mem_id = parts[2]
+                if self.memory_manager.delete_memory(mem_id):
+                    console.print(f"[green]✓[/green] Deleted memory: {mem_id}")
+                else:
+                    console.print(f"[red]Error:[/red] Memory {mem_id} not found")
+
+            elif subcmd == "search":
+                if len(parts) < 3:
+                    console.print("[red]Error:[/red] Usage: /memory search <query>")
+                    return True
+
+                query = ' '.join(parts[2:])
+                results = self.memory_manager.search_memories(query)
+
+                if not results:
+                    console.print(f"[yellow]No memories found matching '{query}'[/yellow]")
+                    return True
+
+                console.print(f"[bold]Found {len(results)} memories matching '{query}':[/bold]\n")
+                for m in results:
+                    console.print(f"  [green]{m['id']}[/green]: {m['content'][:80]}...")
+                    console.print(f"       [dim]→ Type: {m['type']}, Agents: {', '.join(m['inject_for'])}[/dim]")
+
+            elif subcmd == "stats":
+                stats = self.memory_manager.get_stats()
+                user = stats.get('user', {})
+
+                console.print(Panel(
+                    f"""[bold]Total memories:[/bold] {stats['total']}
+
+[bold]By Type:[/bold]
+{chr(10).join(f"  {t}: {c}" for t, c in stats['by_type'].items())}
+
+[bold]By Agent:[/bold]
+  Coding: {stats['by_agent']['coding']}
+  Planning: {stats['by_agent']['planning']}
+  Research: {stats['by_agent']['research']}
+
+[bold]User Info:[/bold]
+  Name: {user.get('name', 'Not set')}
+  Created: {user.get('created_at', 'N/A')[:10]}
+  Last updated: {user.get('last_updated', 'N/A')[:10]}""",
+                    title="Memory Statistics",
+                    border_style="cyan"
+                ))
+
+            elif subcmd == "check-stale":
+                # Check for memories older than 6 months
+                months = 6
+                if len(parts) > 2:
+                    try:
+                        months = int(parts[2])
+                    except ValueError:
+                        console.print("[red]Error:[/red] Invalid months value")
+                        return True
+
+                stale = self.memory_manager.get_stale_memories(months=months)
+
+                if not stale:
+                    console.print(f"[green]✓[/green] No stale memories found (older than {months} months)")
+                else:
+                    console.print(f"[yellow]Found {len(stale)} memories older than {months} months:[/yellow]\n")
+                    for m in stale:
+                        age_months = m.get('age_months', 0)
+                        console.print(f"  [yellow]{m['id']}[/yellow] ({age_months} months old)")
+                        console.print(f"    Content: {m['content'][:70]}...")
+                        console.print(f"    [dim]Type: {m['type']}[/dim]\n")
+
+                    console.print("[dim]Tip: Review these memories and delete outdated ones with /memory delete <id>[/dim]")
+
+            else:
+                console.print(f"[red]Error:[/red] Unknown subcommand: {subcmd}")
+                console.print("[dim]Use /memory (without args) to see available commands[/dim]")
+
             return True
 
         elif cmd == "/tools":
